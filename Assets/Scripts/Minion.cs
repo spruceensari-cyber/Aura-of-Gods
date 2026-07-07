@@ -57,7 +57,6 @@ public class Minion : MonoBehaviour
         if (hp <= 0f)
             return;
 
-        // 1. Önce düşman minyon ara
         Minion enemyMinion = FindEnemyMinionInRange();
 
         if (enemyMinion != null)
@@ -73,7 +72,6 @@ public class Minion : MonoBehaviour
             }
         }
 
-        // 2. Düşman minyon yoksa veya menzilde değilse düşman kule ara
         TowerHealth enemyTower = FindEnemyTowerInRange();
 
         if (enemyTower != null)
@@ -89,7 +87,6 @@ public class Minion : MonoBehaviour
             }
         }
 
-        // 3. Hedef yoksa lane boyunca yürü
         MoveAlongPath();
     }
 
@@ -220,7 +217,7 @@ public class Minion : MonoBehaviour
 
         target.TakeDamage(damage, gameObject);
 
-        Debug.Log(name + " minyona vurdu: " + target.name + " | Hasar: " + damage);
+        Debug.Log(name + " hit minion: " + target.name + " | Damage: " + damage);
     }
 
     void AttackTower(TowerHealth tower)
@@ -238,7 +235,7 @@ public class Minion : MonoBehaviour
 
         tower.TakeDamage(damage);
 
-        Debug.Log(name + " kuleye vurdu: " + tower.name + " | Hasar: " + damage);
+        Debug.Log(name + " hit tower: " + tower.name + " | Damage: " + damage);
     }
 
     public void TakeDamage(float amount)
@@ -248,15 +245,35 @@ public class Minion : MonoBehaviour
 
     public void TakeDamage(float amount, GameObject attacker)
     {
+        if (hp <= 0f || amount <= 0f)
+            return;
+
+        float oldHp = hp;
         hp -= amount;
         hp = Mathf.Clamp(hp, 0f, maxHp);
 
-        Debug.Log(name + " hasar aldı. HP: " + hp + " / " + maxHp);
+        float appliedDamage = oldHp - hp;
+        AOGFloatingCombatText.SpawnDamage(transform.position, appliedDamage, GetDamageTextColor(attacker));
+
+        Debug.Log(name + " took damage. HP: " + hp + " / " + maxHp);
 
         if (hp <= 0f)
         {
             Destroy(gameObject);
         }
+    }
+
+    Color GetDamageTextColor(GameObject attacker)
+    {
+        if (attacker != null)
+        {
+            AOGCharacterStats attackerStats = attacker.GetComponent<AOGCharacterStats>();
+
+            if (attackerStats != null)
+                return attackerStats.team == MinionTeam.Blue ? new Color(0.35f, 0.85f, 1f, 1f) : new Color(1f, 0.25f, 0.18f, 1f);
+        }
+
+        return new Color(1f, 0.72f, 0.22f, 1f);
     }
 
     void FaceTarget(Vector3 target)

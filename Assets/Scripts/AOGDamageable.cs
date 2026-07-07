@@ -44,11 +44,15 @@ public class AOGDamageable : MonoBehaviour
 
     public void TakeDamage(float amount, GameObject attacker)
     {
-        if (hp <= 0f)
+        if (hp <= 0f || amount <= 0f)
             return;
 
+        float oldHp = hp;
         hp -= amount;
         hp = Mathf.Clamp(hp, 0f, maxHp);
+
+        float appliedDamage = oldHp - hp;
+        AOGFloatingCombatText.SpawnDamage(transform.position, appliedDamage, new Color(1f, 0.62f, 0.22f, 1f));
 
         if (hp <= 0f)
             Die();
@@ -56,8 +60,15 @@ public class AOGDamageable : MonoBehaviour
 
     public void Heal(float amount)
     {
+        if (amount <= 0f || hp <= 0f)
+            return;
+
+        float oldHp = hp;
         hp += amount;
         hp = Mathf.Clamp(hp, 0f, maxHp);
+
+        float appliedHeal = hp - oldHp;
+        AOGFloatingCombatText.SpawnHeal(transform.position, appliedHeal);
     }
 
     public void Die()

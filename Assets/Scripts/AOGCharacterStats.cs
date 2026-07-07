@@ -26,10 +26,17 @@ public class AOGCharacterStats : MonoBehaviour
 
     public void TakeDamage(float amount)
     {
+        if (hp <= 0f || amount <= 0f)
+            return;
+
+        float oldHp = hp;
         hp -= amount;
         hp = Mathf.Clamp(hp, 0f, maxHp);
 
-        Debug.Log(name + " hasar aldı: " + hp + " / " + maxHp);
+        float appliedDamage = oldHp - hp;
+        AOGFloatingCombatText.SpawnDamage(transform.position, appliedDamage, new Color(1f, 0.32f, 0.22f, 1f));
+
+        Debug.Log(name + " took damage: " + hp + " / " + maxHp);
 
         if (hp <= 0f)
         {
@@ -37,9 +44,22 @@ public class AOGCharacterStats : MonoBehaviour
         }
     }
 
+    public void Heal(float amount)
+    {
+        if (amount <= 0f || hp <= 0f)
+            return;
+
+        float oldHp = hp;
+        hp += amount;
+        hp = Mathf.Clamp(hp, 0f, maxHp);
+
+        float appliedHeal = hp - oldHp;
+        AOGFloatingCombatText.SpawnHeal(transform.position, appliedHeal);
+    }
+
     void Die()
     {
-        Debug.Log(name + " öldü.");
+        Debug.Log(name + " died.");
         gameObject.SetActive(false);
     }
 }

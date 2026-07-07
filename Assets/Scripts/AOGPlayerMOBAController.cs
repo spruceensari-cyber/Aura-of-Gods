@@ -9,18 +9,39 @@ public class AOGPlayerMOBAController : MonoBehaviour
     [Header("Movement")]
     public LayerMask groundMask = ~0;
     public float stopDistance = 0.35f;
+    public float rotationSpeed = 14f;
+
+    [Header("Command Feel")]
+    public KeyCode holdPositionKey = KeyCode.S;
+    public KeyCode attackMoveKey = KeyCode.A;
+    public bool cancelAttackWindupOnMove = true;
+    [Range(0.05f, 0.75f)]
+    public float attackWindupPercent = 0.32f;
+    public float attackMoveSearchRange = 7f;
+    public float targetLeashRange = 1.5f;
 
     [Header("Auto Attack")]
     public bool autoAttackNearestEnemy = true;
+    public bool attackMoveNearestEnemy = true;
+    public float towerExtraRange = 3f;
 
     private AOGCharacterStats stats;
+    private AOGSimpleCombatAnimator combatVisual;
+    private LyraSkillSet lyraSkillSet;
+
     private Vector3 moveTarget;
     private bool hasMoveTarget;
+    private bool attackMoveActive;
+    private bool movedThisFrame;
 
     private Minion targetMinion;
     private TowerHealth targetTower;
 
-    private float nextAttackTime;
+    private bool attackWindingUp;
+    private float attackImpactTime;
+    private float nextAttackReadyTime;
+    private Minion pendingMinion;
+    private TowerHealth pendingTower;
 
     void Start()
     {
@@ -35,20 +56,28 @@ public class AOGPlayerMOBAController : MonoBehaviour
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
 
+        combatVisual = GetComponent<AOGSimpleCombatAnimator>();
+        lyraSkillSet = GetComponent<LyraSkillSet>();
+
         moveTarget = transform.position;
     }
 
     void Update()
     {
+        movedThisFrame = false;
+
         if (stats == null || stats.IsDead)
             return;
 
-        if (Input.GetKeyDown(KeyCode.S))
+        CompleteAttackIfReady();
+
+        if (Input.GetKeyDown(holdPositionKey))
         {
             StopAllActions();
         }
 
         HandleMouseInput();
+        HandleAttackMoveScan();
         HandleMovement();
         HandleAttackLogic();
         UpdateAnimator();
@@ -59,36 +88,59 @@ public class AOGPlayerMOBAController : MonoBehaviour
         if (!Input.GetMouseButtonDown(1))
             return;
 
+        if (mainCamera == null)
+            mainCamera = Camera.main;
+
+        if (mainCamera == null)
+            return;
+
         Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+        if (!Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+            return;
+
+        Minion clickedMinion = hit.collider.GetComponentInParent<Minion>();
+        TowerHealth clickedTower = hit.collider.GetComponentInParent<TowerHealth>();
+
+        if (clickedMinion != null && clickedMinion.team != stats.team)
         {
-            Minion clickedMinion = hit.collider.GetComponentInParent<Minion>();
-            TowerHealth clickedTower = hit.collider.GetComponentInParent<TowerHealth>();
-
-            if (clickedMinion != null && clickedMinion.team != stats.team)
-            {
-                targetMinion = clickedMinion;
-                targetTower = null;
-                hasMoveTarget = false;
-                return;
-            }
-
-            if (clickedTower != null && clickedTower.towerTeam != stats.team)
-            {
-                targetTower = clickedTower;
-                targetMinion = null;
-                hasMoveTarget = false;
-                return;
-            }
-
-            moveTarget = hit.point;
-            moveTarget.y = transform.position.y;
-
-            targetMinion = null;
-            targetTower = null;
-            hasMoveTarget = true;
+            SetMinionTarget(clickedMinion);
+            return;
         }
+
+        if (clickedTower != null && clickedTower.towerTeam != stats.team)
+        {
+            SetTowerTarget(clickedTower);
+            return;
+        }
+
+        bool attackMoveCommand = Input.GetKey(attackMoveKey);
+
+        if (attackMoveCommand && attackMoveNearestEnemy)
+        {
+            Minion nearest = FindNearestEnemyMinion(hit.point, attackMoveSearchRange);
+
+            if (nearest != null)
+            {
+                SetMinionTarget(nearest);
+                return;
+            }
+        }
+
+        SetMoveTarget(hit.point, attackMoveCommand);
+    }
+
+    void HandleAttackMoveScan()
+    {
+        if (!attackMoveActive || !hasMoveTarget)
+            return;
+
+        Minion nearest = FindNearestEnemyMinion(stats.attackRange);
+
+        if (nearest == null)
+            return;
+
+        SetMinionTarget(nearest);
     }
 
     void HandleMovement()
@@ -106,11 +158,15 @@ public class AOGPlayerMOBAController : MonoBehaviour
         }
 
         transform.position += direction.normalized * stats.moveSpeed * Time.deltaTime;
+        movedThisFrame = true;
         FaceTarget(moveTarget);
     }
 
     void HandleAttackLogic()
     {
+        if (attackWindingUp)
+            return;
+
         if (targetMinion != null)
         {
             AttackSelectedMinion();
@@ -129,7 +185,7 @@ public class AOGPlayerMOBAController : MonoBehaviour
 
             if (nearest != null)
             {
-                targetMinion = nearest;
+                SetMinionTarget(nearest);
                 AttackSelectedMinion();
             }
         }
@@ -137,7 +193,7 @@ public class AOGPlayerMOBAController : MonoBehaviour
 
     void AttackSelectedMinion()
     {
-        if (targetMinion == null || targetMinion.hp <= 0f)
+        if (!IsValidTarget(targetMinion))
         {
             targetMinion = null;
             return;
@@ -152,27 +208,9 @@ public class AOGPlayerMOBAController : MonoBehaviour
         }
 
         hasMoveTarget = false;
+        attackMoveActive = false;
         FaceTarget(targetMinion.transform.position);
-
-        if (Time.time >= nextAttackTime)
-        {
-            nextAttackTime = Time.time + stats.attackCooldown;
-
-            targetMinion.TakeDamage(stats.attackDamage, gameObject);
-
-            AOGSimpleCombatAnimator visual = GetComponent<AOGSimpleCombatAnimator>();
-if (visual != null)
-    visual.PlayAttack();
-
-            LyraSkillSet lyra = GetComponent<LyraSkillSet>();
-            if (lyra != null)
-                lyra.EmpoweredBasicAttack(targetMinion);
-
-            if (animator != null)
-                animator.SetTrigger("Attack");
-
-            Debug.Log(name + " auto attack yaptı -> " + targetMinion.name);
-        }
+        TryBeginAttack(targetMinion, null);
     }
 
     void AttackSelectedTower()
@@ -183,57 +221,161 @@ if (visual != null)
             return;
         }
 
+        float towerRange = stats.attackRange + towerExtraRange;
         float distance = FlatDistance(transform.position, targetTower.transform.position);
 
-        if (distance > stats.attackRange + 3f)
+        if (distance > towerRange)
         {
             MoveTowardTarget(targetTower.transform.position);
             return;
         }
 
         hasMoveTarget = false;
+        attackMoveActive = false;
         FaceTarget(targetTower.transform.position);
+        TryBeginAttack(null, targetTower);
+    }
 
-        if (Time.time >= nextAttackTime)
+    void TryBeginAttack(Minion minion, TowerHealth tower)
+    {
+        if (Time.time < nextAttackReadyTime)
+            return;
+
+        attackWindingUp = true;
+        pendingMinion = minion;
+        pendingTower = tower;
+
+        float cooldown = Mathf.Max(0.05f, stats.attackCooldown);
+        attackImpactTime = Time.time + cooldown * attackWindupPercent;
+        nextAttackReadyTime = Time.time + cooldown;
+
+        PlayAttackFeedback();
+    }
+
+    void CompleteAttackIfReady()
+    {
+        if (!attackWindingUp || Time.time < attackImpactTime)
+            return;
+
+        attackWindingUp = false;
+
+        if (IsValidTarget(pendingMinion))
         {
-            nextAttackTime = Time.time + stats.attackCooldown;
+            float allowedRange = stats.attackRange + targetLeashRange;
 
-            targetTower.TakeDamage(stats.attackDamage);
+            if (FlatDistance(transform.position, pendingMinion.transform.position) <= allowedRange)
+            {
+                pendingMinion.TakeDamage(stats.attackDamage, gameObject);
 
-AOGSimpleCombatAnimator visual = GetComponent<AOGSimpleCombatAnimator>();
-if (visual != null)
-    visual.PlayAttack();
-            if (animator != null)
-                animator.SetTrigger("Attack");
+                if (lyraSkillSet != null)
+                    lyraSkillSet.EmpoweredBasicAttack(pendingMinion);
 
-            Debug.Log(name + " kuleye auto attack yaptı -> " + targetTower.name);
+                Debug.Log(name + " basic attack hit -> " + pendingMinion.name);
+            }
         }
+        else if (pendingTower != null && pendingTower.hp > 0f)
+        {
+            float allowedRange = stats.attackRange + towerExtraRange + targetLeashRange;
+
+            if (FlatDistance(transform.position, pendingTower.transform.position) <= allowedRange)
+            {
+                pendingTower.TakeDamage(stats.attackDamage);
+                Debug.Log(name + " basic attack hit tower -> " + pendingTower.name);
+            }
+        }
+
+        pendingMinion = null;
+        pendingTower = null;
+    }
+
+    void PlayAttackFeedback()
+    {
+        if (combatVisual != null)
+            combatVisual.PlayAttack();
+
+        SetAnimatorTrigger("Attack");
+    }
+
+    void SetMoveTarget(Vector3 point, bool attackMove)
+    {
+        moveTarget = point;
+        moveTarget.y = transform.position.y;
+
+        targetMinion = null;
+        targetTower = null;
+        hasMoveTarget = true;
+        attackMoveActive = attackMove;
+
+        if (cancelAttackWindupOnMove)
+            CancelPendingAttack();
+    }
+
+    void SetMinionTarget(Minion minion)
+    {
+        targetMinion = minion;
+        targetTower = null;
+        hasMoveTarget = false;
+        attackMoveActive = false;
+
+        if (cancelAttackWindupOnMove)
+            CancelPendingAttack();
+    }
+
+    void SetTowerTarget(TowerHealth tower)
+    {
+        targetTower = tower;
+        targetMinion = null;
+        hasMoveTarget = false;
+        attackMoveActive = false;
+
+        if (cancelAttackWindupOnMove)
+            CancelPendingAttack();
     }
 
     Minion FindNearestEnemyMinion(float range)
+    {
+        return FindNearestEnemyMinion(transform.position, range);
+    }
+
+    Minion FindNearestEnemyMinion(Vector3 origin, float range)
     {
         Minion[] minions = FindObjectsByType<Minion>(FindObjectsSortMode.None);
 
         Minion closest = null;
         float closestDistance = Mathf.Infinity;
 
-        foreach (Minion m in minions)
+        foreach (Minion minion in minions)
         {
-            if (m == null) continue;
-            if (!m.gameObject.activeInHierarchy) continue;
-            if (m.hp <= 0f) continue;
-            if (m.team == stats.team) continue;
+            if (!IsValidTarget(minion))
+                continue;
 
-            float distance = FlatDistance(transform.position, m.transform.position);
+            float distance = FlatDistance(origin, minion.transform.position);
 
             if (distance <= range && distance < closestDistance)
             {
-                closest = m;
+                closest = minion;
                 closestDistance = distance;
             }
         }
 
         return closest;
+    }
+
+    bool IsValidTarget(Minion minion)
+    {
+        if (minion == null)
+            return false;
+
+        if (!minion.gameObject.activeInHierarchy)
+            return false;
+
+        if (minion.hp <= 0f)
+            return false;
+
+        if (minion.team == stats.team)
+            return false;
+
+        return true;
     }
 
     void MoveTowardTarget(Vector3 target)
@@ -245,19 +387,27 @@ if (visual != null)
             return;
 
         transform.position += direction.normalized * stats.moveSpeed * Time.deltaTime;
+        movedThisFrame = true;
         FaceTarget(target);
     }
 
     void StopAllActions()
     {
         hasMoveTarget = false;
+        attackMoveActive = false;
         targetMinion = null;
         targetTower = null;
+        CancelPendingAttack();
+        SetAnimatorFloat("Speed", 0f);
 
-        if (animator != null)
-            animator.SetFloat("Speed", 0f);
+        Debug.Log(name + " hold position.");
+    }
 
-        Debug.Log(name + " durdu.");
+    void CancelPendingAttack()
+    {
+        attackWindingUp = false;
+        pendingMinion = null;
+        pendingTower = null;
     }
 
     void FaceTarget(Vector3 target)
@@ -265,11 +415,11 @@ if (visual != null)
         Vector3 direction = target - transform.position;
         direction.y = 0f;
 
-        if (direction == Vector3.zero)
+        if (direction.sqrMagnitude < 0.0001f)
             return;
 
         Quaternion lookRotation = Quaternion.LookRotation(direction);
-        transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, 12f * Time.deltaTime);
+        transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, rotationSpeed * Time.deltaTime);
     }
 
     float FlatDistance(Vector3 a, Vector3 b)
@@ -281,11 +431,43 @@ if (visual != null)
 
     void UpdateAnimator()
     {
+        SetAnimatorFloat("Speed", movedThisFrame ? 1f : 0f);
+    }
+
+    void SetAnimatorFloat(string parameterName, float value)
+    {
         if (animator == null)
             return;
 
-        float speedValue = hasMoveTarget ? 1f : 0f;
+        if (!HasAnimatorParameter(parameterName, AnimatorControllerParameterType.Float))
+            return;
 
-        animator.SetFloat("Speed", speedValue);
+        animator.SetFloat(parameterName, value);
+    }
+
+    void SetAnimatorTrigger(string parameterName)
+    {
+        if (animator == null)
+            return;
+
+        if (!HasAnimatorParameter(parameterName, AnimatorControllerParameterType.Trigger))
+            return;
+
+        animator.ResetTrigger(parameterName);
+        animator.SetTrigger(parameterName);
+    }
+
+    bool HasAnimatorParameter(string parameterName, AnimatorControllerParameterType parameterType)
+    {
+        if (animator == null)
+            return false;
+
+        foreach (AnimatorControllerParameter parameter in animator.parameters)
+        {
+            if (parameter.name == parameterName && parameter.type == parameterType)
+                return true;
+        }
+
+        return false;
     }
 }

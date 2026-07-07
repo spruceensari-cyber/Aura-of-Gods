@@ -6,6 +6,12 @@ public class TowerAttack : MonoBehaviour
     public float attackDamage = 30f;
     public float attackRate = 1.2f;
 
+    [Header("Targeting")]
+    public bool prioritizeMinions = true;
+    public bool attackEnemyHeroes = true;
+    public float heroTargetHeight = 1.5f;
+    public float minionTargetHeight = 1.2f;
+
     [Header("Projectile Visual")]
     public float projectileSize = 0.35f;
     public float projectileSpeed = 20f;
@@ -39,16 +45,16 @@ public class TowerAttack : MonoBehaviour
         if (Time.time < nextAttackTime)
             return;
 
-        Minion target = FindClosestEnemyMinion();
+        Transform target = FindPriorityTarget(out float targetHeight);
 
         if (target == null)
             return;
 
         nextAttackTime = Time.time + attackRate;
 
-        ShootProjectile(target);
+        ShootProjectile(target, targetHeight);
 
-        Debug.Log(name + " küçük kule mermisi attı -> " + target.name);
+        Debug.Log(name + " tower bolt -> " + target.name);
     }
 
     void AutoAssignTeam()
@@ -61,6 +67,43 @@ public class TowerAttack : MonoBehaviour
             towerHealth.towerTeam = MinionTeam.Red;
     }
 
+    Transform FindPriorityTarget(out float targetHeight)
+    {
+        targetHeight = minionTargetHeight;
+
+        if (prioritizeMinions)
+        {
+            Minion minion = FindClosestEnemyMinion();
+
+            if (minion != null)
+                return minion.transform;
+        }
+
+        if (attackEnemyHeroes)
+        {
+            AOGCharacterStats hero = FindClosestEnemyHero();
+
+            if (hero != null)
+            {
+                targetHeight = heroTargetHeight;
+                return hero.transform;
+            }
+        }
+
+        if (!prioritizeMinions)
+        {
+            Minion minion = FindClosestEnemyMinion();
+
+            if (minion != null)
+            {
+                targetHeight = minionTargetHeight;
+                return minion.transform;
+            }
+        }
+
+        return null;
+    }
+
     Minion FindClosestEnemyMinion()
     {
         Minion[] minions = FindObjectsByType<Minion>(FindObjectsSortMode.None);
@@ -68,31 +111,25 @@ public class TowerAttack : MonoBehaviour
         Minion closest = null;
         float closestDistance = Mathf.Infinity;
 
-        foreach (Minion m in minions)
+        foreach (Minion minion in minions)
         {
-            if (m == null)
+            if (minion == null)
                 continue;
 
-            if (!m.gameObject.activeInHierarchy)
+            if (!minion.gameObject.activeInHierarchy)
                 continue;
 
-            if (m.hp <= 0f)
+            if (minion.hp <= 0f)
                 continue;
 
-            if (m.team == towerHealth.towerTeam)
+            if (minion.team == towerHealth.towerTeam)
                 continue;
 
-            Vector3 towerPos = transform.position;
-            Vector3 minionPos = m.transform.position;
-
-            towerPos.y = 0f;
-            minionPos.y = 0f;
-
-            float distance = Vector3.Distance(towerPos, minionPos);
+            float distance = FlatDistance(transform.position, minion.transform.position);
 
             if (distance <= attackRange && distance < closestDistance)
             {
-                closest = m;
+                closest = minion;
                 closestDistance = distance;
             }
         }
@@ -100,12 +137,45 @@ public class TowerAttack : MonoBehaviour
         return closest;
     }
 
-    void ShootProjectile(Minion target)
+    AOGCharacterStats FindClosestEnemyHero()
+    {
+        AOGCharacterStats[] heroes = FindObjectsByType<AOGCharacterStats>(FindObjectsSortMode.None);
+
+        AOGCharacterStats closest = null;
+        float closestDistance = Mathf.Infinity;
+
+        foreach (AOGCharacterStats hero in heroes)
+        {
+            if (hero == null)
+                continue;
+
+            if (!hero.gameObject.activeInHierarchy)
+                continue;
+
+            if (hero.IsDead)
+                continue;
+
+            if (hero.team == towerHealth.towerTeam)
+                continue;
+
+            float distance = FlatDistance(transform.position, hero.transform.position);
+
+            if (distance <= attackRange && distance < closestDistance)
+            {
+                closest = hero;
+                closestDistance = distance;
+            }
+        }
+
+        return closest;
+    }
+
+    void ShootProjectile(Transform target, float targetHeight)
     {
         Vector3 spawnPos = transform.position + Vector3.up * shootHeight;
 
         GameObject projectile = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        projectile.name = "Tower_Red_Energy_Bolt";
+        projectile.name = "Tower_Energy_Bolt";
 
         projectile.transform.position = spawnPos;
         projectile.transform.localScale = Vector3.one * projectileSize;
@@ -115,14 +185,7 @@ public class TowerAttack : MonoBehaviour
         if (renderer != null)
         {
             Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-
-            Color color = Color.red;
-
-            if (towerHealth != null && towerHealth.towerTeam == MinionTeam.Blue)
-                color = new Color(0.2f, 0.7f, 1f);
-
-            if (towerHealth != null && towerHealth.towerTeam == MinionTeam.Red)
-                color = new Color(1f, 0.1f, 0.05f);
+            Color color = GetProjectileColor();
 
             mat.color = color;
 
@@ -144,7 +207,26 @@ public class TowerAttack : MonoBehaviour
 
         TowerBolt bolt = projectile.AddComponent<TowerBolt>();
         bolt.target = target;
+        bolt.targetHeight = targetHeight;
         bolt.damage = attackDamage;
         bolt.speed = projectileSpeed;
+    }
+
+    Color GetProjectileColor()
+    {
+        if (towerHealth != null && towerHealth.towerTeam == MinionTeam.Blue)
+            return new Color(0.2f, 0.7f, 1f);
+
+        if (towerHealth != null && towerHealth.towerTeam == MinionTeam.Red)
+            return new Color(1f, 0.1f, 0.05f);
+
+        return Color.red;
+    }
+
+    float FlatDistance(Vector3 a, Vector3 b)
+    {
+        a.y = 0f;
+        b.y = 0f;
+        return Vector3.Distance(a, b);
     }
 }

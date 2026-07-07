@@ -31,13 +31,18 @@ public class TowerHealth : MonoBehaviour
 
     public void TakeDamage(float amount)
     {
-        if (hp <= 0f)
+        if (hp <= 0f || amount <= 0f)
             return;
 
+        float oldHp = hp;
         hp -= amount;
         hp = Mathf.Clamp(hp, 0f, maxHp);
 
-        Debug.Log(name + " kule hasar aldı. HP: " + hp + " / " + maxHp);
+        float appliedDamage = oldHp - hp;
+        Vector3 textPosition = transform.position + Vector3.up * 4f;
+        AOGFloatingCombatText.SpawnDamage(textPosition, appliedDamage, new Color(1f, 0.46f, 0.2f, 1f));
+
+        Debug.Log(name + " tower took damage. HP: " + hp + " / " + maxHp);
 
         if (hp <= 0f)
         {
@@ -47,7 +52,7 @@ public class TowerHealth : MonoBehaviour
 
     void Die()
     {
-        Debug.Log(name + " kule yok oldu.");
+        Debug.Log(name + " tower destroyed.");
 
         if (destroyOnDeath)
         {

@@ -3,7 +3,7 @@ using TMPro;
 using System.Collections.Generic;
 
 /// <summary>
-Pentakill and milestone tracking system with special effects
+/// Pentakill and milestone tracking system with special effects
 /// </summary>
 public class AchievementSystem : MonoBehaviour
 {

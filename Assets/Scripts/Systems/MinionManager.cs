@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
-Automated minion wave manager - spawns minions every 30 seconds
+/// Automated minion wave manager - spawns minions every 30 seconds
 /// </summary>
 public class MinionManager : MonoBehaviour
 {
@@ -60,7 +60,7 @@ public class MinionManager : MonoBehaviour
         minion.transform.position = lanePath.position + Random.insideUnitSphere * 2f;
         
         CombatUnit unit = minion.AddComponent<CombatUnit>();
-        unit.baseHealth = 50f;
+        unit.Configure(team, UnitType.Minion, 50f);
         
         // Minions are AI controlled
     }

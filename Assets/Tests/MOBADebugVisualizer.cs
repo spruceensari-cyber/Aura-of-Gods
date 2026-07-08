@@ -1,7 +1,8 @@
+#if AOG_ENABLE_TEST_HELPERS
 using UnityEngine;
 
 /// <summary>
-Debug visualization for MOBA systems - shows game state in real-time
+/// Debug visualization for MOBA systems - shows game state in real-time
 /// </summary>
 public class MOBADebugVisualizer : MonoBehaviour
 {
@@ -143,3 +144,4 @@ public class MOBADebugVisualizer : MonoBehaviour
         GUILayout.EndArea();
     }
 }
+#endif

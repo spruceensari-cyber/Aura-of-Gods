@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
-Game state manager - tracks kills, deaths, objectives, and win conditions
+/// Game state manager - tracks kills, deaths, objectives, and win conditions
 /// </summary>
 public class GameStateManager : MonoBehaviour
 {

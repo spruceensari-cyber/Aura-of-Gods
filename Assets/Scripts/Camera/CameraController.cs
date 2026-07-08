@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-Camera controller for spectator view - top-down isometric MOBA view
+/// Camera controller for spectator view - top-down isometric MOBA view
 /// </summary>
 public class CameraController : MonoBehaviour
 {

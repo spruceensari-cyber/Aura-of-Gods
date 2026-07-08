@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
-Modern MOBA minimap with team colors and unit positioning
+/// Modern MOBA minimap with team colors and unit positioning
 /// </summary>
 public class MinimapRenderer : MonoBehaviour
 {

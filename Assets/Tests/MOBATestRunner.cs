@@ -1,7 +1,8 @@
+#if AOG_ENABLE_TEST_HELPERS
 using UnityEngine;
 
 /// <summary>
-Test runner for manual testing of all MOBA systems
+/// Test runner for manual testing of all MOBA systems
 /// </summary>
 public class MOBATestRunner : MonoBehaviour
 {
@@ -225,3 +226,4 @@ public class MOBATestRunner : MonoBehaviour
         Debug.Log($"  {result}: {testName}");
     }
 }
+#endif

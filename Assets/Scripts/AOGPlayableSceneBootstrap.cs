@@ -147,7 +147,7 @@ public class AOGPlayableSceneBootstrap : MonoBehaviour
     private void ConfigureCamera(GameObject playerObject)
     {
         managedCamera = FindOrCreateCamera();
-        bool hasSceneCameraController = Object.FindAnyObjectByType<CameraController>() != null;
+        bool hasSceneCameraController = Object.FindAnyObjectByType<CameraController>() != null || Object.FindAnyObjectByType<AOGMobaCameraController>() != null;
         manageCamera = !hasSceneCameraController;
 
         if (!manageCamera)

@@ -139,7 +139,9 @@ public class AOGChampionVisualApplier : MonoBehaviour
         ParticleSystem.VelocityOverLifetimeModule velocity = aura.velocityOverLifetime;
         velocity.enabled = true;
         velocity.space = ParticleSystemSimulationSpace.Local;
+        velocity.x = new ParticleSystem.MinMaxCurve(0f, 0f);
         velocity.y = new ParticleSystem.MinMaxCurve(0.2f, 0.65f);
+        velocity.z = new ParticleSystem.MinMaxCurve(0f, 0f);
 
         Transform oldLight = transform.Find(LightName);
         if (oldLight != null)

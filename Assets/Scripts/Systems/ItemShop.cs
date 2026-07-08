@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 
 /// <summary>
-Professional item shop system - buy/sell items, passive gold income display
+/// Professional item shop system - buy/sell items, passive gold income display
 /// </summary>
 public class ItemShop : MonoBehaviour
 {

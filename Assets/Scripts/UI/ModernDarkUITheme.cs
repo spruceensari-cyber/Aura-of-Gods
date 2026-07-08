@@ -3,7 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-Modern dark themed UI system - sleek neon accents, gothic colors
+/// Modern dark themed UI system - sleek neon accents, gothic colors
 /// </summary>
 public class ModernDarkUITheme : MonoBehaviour
 {
@@ -85,7 +85,7 @@ public class ModernDarkUITheme : MonoBehaviour
 }
 
 /// <summary>
-Neon glow effect for UI elements
+/// Neon glow effect for UI elements
 /// </summary>
 public class NeonGlowEffect : MonoBehaviour
 {

@@ -2,7 +2,7 @@ using UnityEngine;
 using TMPro;
 
 /// <summary>
-In-game UI with game timer, team scores, objective tracker
+/// In-game UI with game timer, team scores, objective tracker
 /// </summary>
 public class GameUIManager : MonoBehaviour
 {

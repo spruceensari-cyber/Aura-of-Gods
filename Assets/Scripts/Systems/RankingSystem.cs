@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-ELO-based ranking system for competitive play
+/// ELO-based ranking system for competitive play
 /// </summary>
 public class RankingSystem : MonoBehaviour
 {
@@ -92,7 +92,7 @@ public class RankingSystem : MonoBehaviour
 }
 
 /// <summary>
-Season rewards and milestones
+/// Season rewards and milestones
 /// </summary>
 public class SeasonRewards : MonoBehaviour
 {

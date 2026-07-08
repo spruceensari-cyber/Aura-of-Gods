@@ -19,6 +19,15 @@ public class CombatUnit : MonoBehaviour
     public float HealthPercent => currentHealth / baseHealth;
     public bool IsAlive => isAlive;
     
+    public void Configure(TeamType team, UnitType type, float health)
+    {
+        unitTeam = team;
+        unitType = type;
+        baseHealth = Mathf.Max(1f, health);
+        currentHealth = baseHealth;
+        isAlive = true;
+        OnHealthChanged?.Invoke(currentHealth);
+    }
     public delegate void HealthChangeEvent(float healthAmount);
     public event HealthChangeEvent OnHealthChanged;
     public event System.Action OnDeath;

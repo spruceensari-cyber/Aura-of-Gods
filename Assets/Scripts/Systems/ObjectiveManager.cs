@@ -31,7 +31,7 @@ public class ObjectiveManager : MonoBehaviour
         dragon.GetComponent<Renderer>().material.color = new Color(1f, 0.5f, 0f);
         
         CombatUnit unit = dragon.AddComponent<CombatUnit>();
-        unit.baseHealth = 3000f;
+        unit.Configure(TeamType.Neutral, UnitType.Neutral, 3000f);
         
         dragonNPC = dragon;
         dragonAlive = true;
@@ -46,7 +46,7 @@ public class ObjectiveManager : MonoBehaviour
         baron.GetComponent<Renderer>().material.color = new Color(0.5f, 0f, 1f);
         
         CombatUnit unit = baron.AddComponent<CombatUnit>();
-        unit.baseHealth = 5000f;
+        unit.Configure(TeamType.Neutral, UnitType.Neutral, 5000f);
         
         baronNPC = baron;
         baronAlive = true;

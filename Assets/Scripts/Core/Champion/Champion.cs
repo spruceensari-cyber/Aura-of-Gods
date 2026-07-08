@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections;
 using System.Collections.Generic;
 
 public enum DamageType
@@ -210,7 +211,18 @@ public class Champion : MonoBehaviour
     
     public void Stun(float duration)
     {
-        StartCoroutine(System.Collections.Coroutines.WaitAndUnstun(this, duration));
+        if (!isAlive)
+            return;
+
+        StopCoroutine(nameof(StunRoutine));
+        StartCoroutine(StunRoutine(duration));
+    }
+
+    private IEnumerator StunRoutine(float duration)
+    {
+        isStunned = true;
+        yield return new WaitForSeconds(Mathf.Max(0f, duration));
+        isStunned = false;
     }
     
     private void Die()

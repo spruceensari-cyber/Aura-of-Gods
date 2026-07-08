@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
-Advanced AI for bot champions - positioning, ability usage, team fights
+/// Advanced AI for bot champions - positioning, ability usage, team fights
 /// </summary>
 public class BotChampionAI : MonoBehaviour
 {

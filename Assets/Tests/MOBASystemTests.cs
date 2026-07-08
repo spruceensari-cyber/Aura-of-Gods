@@ -1,3 +1,5 @@
+#if AOG_ENABLE_TEST_HELPERS
+#if UNITY_INCLUDE_TESTS
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -175,6 +177,7 @@ public class MOBASystemTests
 /// <summary>
 /// Integration tests for complete game flow
 /// </summary>
+#if AOG_ENABLE_PLAYMODE_TESTS
 public class MOBAIntegrationTests
 {
     [UnityTest]
@@ -257,10 +260,12 @@ public class MOBAIntegrationTests
         Object.Destroy(netObj);
     }
 }
+#endif
 
 /// <summary>
 /// Performance tests for MOBA systems
 /// </summary>
+#if AOG_ENABLE_PERFORMANCE_TESTS
 public class MOBAPerformanceTests
 {
     [Performance]
@@ -300,3 +305,7 @@ public class MOBAPerformanceTests
             Object.Destroy(unit);
     }
 }
+
+#endif
+#endif
+#endif

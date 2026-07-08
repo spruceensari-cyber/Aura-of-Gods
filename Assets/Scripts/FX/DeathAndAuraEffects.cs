@@ -1,7 +1,8 @@
 using UnityEngine;
+using System.Collections;
 
 /// <summary>
-Champion death animation with dark gothic theme
+/// Champion death animation with dark gothic theme
 /// </summary>
 public class DeathEffect : MonoBehaviour
 {
@@ -31,12 +32,41 @@ public class DeathEffect : MonoBehaviour
             audio = gameObject.AddComponent<AudioSource>();
         
         // Fade out effect
-        StartCoroutine(System.Collections.Coroutines.FadeOutCoroutine(this, dissolveDuration));
+        StartCoroutine(FadeOutCoroutine());
+    }
+
+    private IEnumerator FadeOutCoroutine()
+    {
+        float duration = Mathf.Max(0.05f, dissolveDuration);
+        float t = 0f;
+
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float alpha = 1f - Mathf.Clamp01(t / duration);
+
+            foreach (Renderer r in renderers)
+            {
+                if (r == null)
+                    continue;
+
+                foreach (Material material in r.materials)
+                {
+                    Color c = material.color;
+                    c.a = alpha;
+                    material.color = c;
+                }
+            }
+
+            yield return null;
+        }
+
+        gameObject.SetActive(false);
     }
 }
 
 /// <summary>
-Gothic-themed aura effect for champions
+/// Gothic-themed aura effect for champions
 /// </summary>
 public class ChampionAuraEffect : MonoBehaviour
 {

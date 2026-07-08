@@ -64,18 +64,18 @@ public class ChampionController : MonoBehaviour
                 transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * turnSpeed);
                 
                 // Move
-                rb.velocity = new Vector3(direction.x * 5f, rb.velocity.y, direction.z * 5f);
+                rb.linearVelocity = new Vector3(direction.x * 5f, rb.linearVelocity.y, direction.z * 5f);
             }
             
             if (Vector3.Distance(transform.position, moveTarget) < stoppingDistance)
             {
                 isMoving = false;
-                rb.velocity = new Vector3(0, rb.velocity.y, 0);
+                rb.linearVelocity = new Vector3(0, rb.linearVelocity.y, 0);
             }
         }
         else
         {
-            rb.velocity = new Vector3(0, rb.velocity.y, 0);
+            rb.linearVelocity = new Vector3(0, rb.linearVelocity.y, 0);
         }
     }
     

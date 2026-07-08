@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -96,6 +97,7 @@ public class AOGChampionSelectRuntime : MonoBehaviour
         canvasObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         canvasObject.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1920f, 1080f);
         canvasObject.AddComponent<GraphicRaycaster>();
+        EnsureEventSystem();
 
         root = FullRect(canvasObject.transform, "Root");
         Image background = root.gameObject.AddComponent<Image>();
@@ -105,6 +107,28 @@ public class AOGChampionSelectRuntime : MonoBehaviour
         CreateCardGrid();
         CreateDetailsPanel();
         CreateFooter();
+    }
+
+    private void EnsureEventSystem()
+    {
+        EventSystem eventSystem = EventSystem.current;
+        if (eventSystem == null)
+        {
+            GameObject eventObject = new GameObject("AOG_EventSystem");
+            eventSystem = eventObject.AddComponent<EventSystem>();
+        }
+
+        if (eventSystem.GetComponent<BaseInputModule>() != null)
+            return;
+
+        System.Type inputSystemModuleType = System.Type.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem");
+        if (inputSystemModuleType != null)
+        {
+            eventSystem.gameObject.AddComponent(inputSystemModuleType);
+            return;
+        }
+
+        eventSystem.gameObject.AddComponent<StandaloneInputModule>();
     }
 
     private void CreateTopBar()

@@ -2,12 +2,14 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Additive objective-arena polish: layered rings, pylons and animated energy accents for Dragon and Medusa pits.
-/// Does not replace authored geometry.
+/// Realism-oriented objective arena polish: continuous energy rings, low mist, selective local lighting and subtle motion.
+/// Keeps authored geometry untouched and avoids visible primitive-segment construction.
 /// </summary>
 public class AOGObjectiveArenaPolishRuntime : MonoBehaviour
 {
-    readonly List<Transform> animated = new();
+    readonly List<LineRenderer> rings = new();
+    readonly List<ParticleSystem> mists = new();
+    readonly List<Light> localLights = new();
     Material dragonMat;
     Material medusaMat;
     bool built;
@@ -22,8 +24,8 @@ public class AOGObjectiveArenaPolishRuntime : MonoBehaviour
     void Awake()
     {
         DontDestroyOnLoad(gameObject);
-        dragonMat = CreateMaterial("DragonArena", new Color(1f, 0.12f, 0.03f), 2.8f);
-        medusaMat = CreateMaterial("MedusaArena", new Color(0.18f, 1f, 0.42f), 2.2f);
+        dragonMat = CreateMaterial("DragonArena", new Color(1f, 0.10f, 0.025f, 0.62f), 2.5f);
+        medusaMat = CreateMaterial("MedusaArena", new Color(0.15f, 0.88f, 0.38f, 0.58f), 2.0f);
     }
 
     void Update()
@@ -37,71 +39,121 @@ public class AOGObjectiveArenaPolishRuntime : MonoBehaviour
         ObjectiveManager manager = FindObjectOfType<ObjectiveManager>();
         if (manager == null || manager.DragonObject == null || manager.MedusaObject == null) return;
 
-        BuildArena(manager.DragonObject.transform.position, dragonMat, "Dragon");
-        BuildArena(manager.MedusaObject.transform.position, medusaMat, "Medusa");
+        BuildArena(manager.DragonObject.transform.position, dragonMat, new Color(1f, 0.18f, 0.04f), "Dragon");
+        BuildArena(manager.MedusaObject.transform.position, medusaMat, new Color(0.18f, 1f, 0.42f), "Medusa");
         built = true;
     }
 
-    void BuildArena(Vector3 center, Material mat, string prefix)
+    void BuildArena(Vector3 center, Material mat, Color lightColor, string prefix)
     {
-        CreateRing(prefix + "_Outer", center, 10f, 0.16f, mat);
-        CreateRing(prefix + "_Inner", center, 6.8f, 0.10f, mat);
+        rings.Add(CreateRing(prefix + "_OuterRing", center, 10f, 0.07f, mat, 0.06f));
+        rings.Add(CreateRing(prefix + "_InnerRing", center, 6.8f, 0.045f, mat, 0.11f));
+        mists.Add(CreateGroundMist(prefix + "_GroundMist", center, lightColor));
 
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 4; i++)
         {
-            float angle = i / 8f * Mathf.PI * 2f;
-            Vector3 pos = center + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 8.6f;
-            GameObject pylon = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            pylon.name = prefix + "_Energy_Pylon";
-            pylon.transform.position = pos + Vector3.up * 1.1f;
-            pylon.transform.localScale = new Vector3(0.22f, 1.1f, 0.22f);
-            pylon.GetComponent<Renderer>().sharedMaterial = mat;
-            Collider col = pylon.GetComponent<Collider>();
-            if (col != null) Destroy(col);
-            animated.Add(pylon.transform);
+            float angle = i / 4f * Mathf.PI * 2f + Mathf.PI * 0.25f;
+            Vector3 pos = center + new Vector3(Mathf.Cos(angle), 1.1f, Mathf.Sin(angle)) * 7.8f;
+            GameObject lightObj = new GameObject(prefix + "_AccentLight");
+            lightObj.transform.position = pos;
+            Light light = lightObj.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = lightColor;
+            light.intensity = 0.85f;
+            light.range = 4.8f;
+            light.shadows = LightShadows.None;
+            localLights.Add(light);
         }
     }
 
-    void CreateRing(string name, Vector3 center, float radius, float thickness, Material mat)
+    LineRenderer CreateRing(string name, Vector3 center, float radius, float width, Material mat, float waviness)
     {
-        const int segments = 36;
-        for (int i = 0; i < segments; i++)
-        {
-            float a0 = i / (float)segments * Mathf.PI * 2f;
-            float a1 = (i + 1) / (float)segments * Mathf.PI * 2f;
-            Vector3 p0 = center + new Vector3(Mathf.Cos(a0), 0f, Mathf.Sin(a0)) * radius;
-            Vector3 p1 = center + new Vector3(Mathf.Cos(a1), 0f, Mathf.Sin(a1)) * radius;
-            Vector3 dir = p1 - p0;
+        GameObject obj = new GameObject(name);
+        LineRenderer lr = obj.AddComponent<LineRenderer>();
+        lr.loop = true;
+        lr.useWorldSpace = true;
+        lr.positionCount = 96;
+        lr.widthMultiplier = width;
+        lr.numCornerVertices = 4;
+        lr.numCapVertices = 4;
+        lr.material = mat;
 
-            GameObject segment = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            segment.name = name;
-            segment.transform.position = Vector3.Lerp(p0, p1, 0.5f) + Vector3.up * 0.08f;
-            segment.transform.rotation = Quaternion.LookRotation(dir.normalized);
-            segment.transform.localScale = new Vector3(thickness, 0.05f, dir.magnitude);
-            segment.GetComponent<Renderer>().sharedMaterial = mat;
-            Collider col = segment.GetComponent<Collider>();
-            if (col != null) Destroy(col);
-            animated.Add(segment.transform);
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float a = i / (float)lr.positionCount * Mathf.PI * 2f;
+            float r = radius + Mathf.Sin(a * 5f) * waviness;
+            lr.SetPosition(i, center + new Vector3(Mathf.Cos(a) * r, 0.075f, Mathf.Sin(a) * r));
         }
+
+        return lr;
+    }
+
+    ParticleSystem CreateGroundMist(string name, Vector3 center, Color color)
+    {
+        GameObject obj = new GameObject(name);
+        obj.transform.position = center + Vector3.up * 0.05f;
+        ParticleSystem ps = obj.AddComponent<ParticleSystem>();
+
+        ParticleSystem.MainModule main = ps.main;
+        main.loop = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(2.8f, 5.2f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.05f, 0.25f);
+        main.startSize = new ParticleSystem.MinMaxCurve(1.2f, 2.8f);
+        main.startColor = new Color(color.r, color.g, color.b, 0.08f);
+        main.maxParticles = 60;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+        ParticleSystem.EmissionModule emission = ps.emission;
+        emission.rateOverTime = 7f;
+
+        ParticleSystem.ShapeModule shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Donut;
+        shape.radius = 7.2f;
+        shape.donutRadius = 2.8f;
+        shape.rotation = new Vector3(90f, 0f, 0f);
+
+        ParticleSystem.ColorOverLifetimeModule colorLife = ps.colorOverLifetime;
+        colorLife.enabled = true;
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[] { new GradientColorKey(color, 0f), new GradientColorKey(color * 0.55f, 1f) },
+            new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(0.09f, 0.35f), new GradientAlphaKey(0f, 1f) });
+        colorLife.color = gradient;
+
+        ParticleSystem.VelocityOverLifetimeModule velocity = ps.velocityOverLifetime;
+        velocity.enabled = true;
+        velocity.y = new ParticleSystem.MinMaxCurve(0.03f, 0.12f);
+
+        ps.Play();
+        return ps;
     }
 
     void Animate()
     {
-        float pulse = 1f + Mathf.Sin(Time.unscaledTime * 2.2f) * 0.08f;
-        for (int i = 0; i < animated.Count; i++)
+        float pulse = 1f + Mathf.Sin(Time.unscaledTime * 1.2f) * 0.05f;
+
+        for (int i = 0; i < rings.Count; i++)
         {
-            Transform t = animated[i];
-            if (t == null) continue;
-            if (t.name.Contains("Pylon"))
-                t.localScale = new Vector3(0.22f * pulse, 1.1f + Mathf.Sin(Time.unscaledTime * 3f + i) * 0.12f, 0.22f * pulse);
-            else
-                t.Rotate(Vector3.up, Time.unscaledDeltaTime * 3f, Space.World);
+            LineRenderer ring = rings[i];
+            if (ring == null) continue;
+            ring.widthMultiplier = (i % 2 == 0 ? 0.07f : 0.045f) * pulse;
+            ring.transform.Rotate(Vector3.up, Time.unscaledDeltaTime * (i % 2 == 0 ? 0.8f : -1.1f), Space.World);
+        }
+
+        for (int i = 0; i < localLights.Count; i++)
+        {
+            Light light = localLights[i];
+            if (light == null) continue;
+            light.intensity = 0.72f + Mathf.Sin(Time.unscaledTime * 1.6f + i * 1.7f) * 0.12f;
         }
     }
 
     static Material CreateMaterial(string name, Color color, float emission)
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
+            ?? Shader.Find("Universal Render Pipeline/Unlit")
+            ?? Shader.Find("Unlit/Color")
+            ?? Shader.Find("Standard");
         Material mat = new Material(shader) { name = name, color = color };
         if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
         if (mat.HasProperty("_EmissionColor"))

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 [Serializable]
@@ -9,26 +8,43 @@ public class AOGHeroPerformanceProfile
     public string HeroId;
     public int Games;
     public int Wins;
+    public float ExpectedWins;
     public float AverageKDA;
     public float ObjectiveParticipation;
+    public float RoleAdjustedPerformance;
 
     public float WinRate => Games <= 0 ? 0.5f : Wins / (float)Games;
     public float SampleConfidence => Mathf.Clamp01(Games / 20f);
 
     /// <summary>
-    /// Hero-claim priority score.
-    /// Win rate is intentionally dominant, while KDA, objective participation and sample confidence
-    /// prevent tiny-sample or purely stat-padding profiles from unfairly winning hero claims.
+    /// Strength-adjusted win rate: compares actual wins with expected wins from player/opponent Elo.
+    /// 0.50 is neutral. Beating stronger opposition moves this above raw expectation.
+    /// </summary>
+    public float StrengthAdjustedWinRate
+    {
+        get
+        {
+            if (Games <= 0) return 0.5f;
+            float overPerformance = (Wins - ExpectedWins) / Games;
+            return Mathf.Clamp01(0.5f + overPerformance);
+        }
+    }
+
+    /// <summary>
+    /// Hero claim priority. Win outcomes remain dominant, but opponent strength, role-normalized impact,
+    /// KDA, objective play and sample confidence prevent simplistic stat padding from deciding claims.
     /// </summary>
     public float SelectionPriorityScore
     {
         get
         {
-            float winRateScore = Mathf.Clamp01(WinRate) * 65f;
-            float kdaScore = Mathf.Clamp01(AverageKDA / 6f) * 20f;
-            float objectiveScore = Mathf.Clamp01(ObjectiveParticipation) * 10f;
-            float confidenceScore = SampleConfidence * 5f;
-            return winRateScore + kdaScore + objectiveScore + confidenceScore;
+            float adjustedWinScore = StrengthAdjustedWinRate * 55f;
+            float rawWinScore = WinRate * 15f;
+            float roleScore = Mathf.Clamp01(RoleAdjustedPerformance) * 12f;
+            float kdaScore = Mathf.Clamp01(AverageKDA / 6f) * 10f;
+            float objectiveScore = Mathf.Clamp01(ObjectiveParticipation) * 5f;
+            float confidenceScore = SampleConfidence * 3f;
+            return adjustedWinScore + rawWinScore + roleScore + kdaScore + objectiveScore + confidenceScore;
         }
     }
 }
@@ -66,6 +82,19 @@ public class AOGHeroMasteryRuntime : MonoBehaviour
 
     public void RegisterMatch(string playerId, string heroId, bool won, float kda, float objectiveParticipation)
     {
+        RegisterMatch(playerId, heroId, won, kda, objectiveParticipation, 1200, 1200, 0.5f);
+    }
+
+    public void RegisterMatch(
+        string playerId,
+        string heroId,
+        bool won,
+        float kda,
+        float objectiveParticipation,
+        int playerElo,
+        int opponentAverageElo,
+        float roleAdjustedPerformance)
+    {
         if (string.IsNullOrWhiteSpace(playerId) || string.IsNullOrWhiteSpace(heroId)) return;
 
         if (!profiles.TryGetValue(playerId, out AOGPlayerHeroMasteryProfile profile))
@@ -82,10 +111,14 @@ public class AOGHeroMasteryRuntime : MonoBehaviour
         }
 
         int previousGames = hero.Games;
+        float expectedWin = 1f / (1f + Mathf.Pow(10f, (opponentAverageElo - playerElo) / 400f));
+
         hero.Games++;
         if (won) hero.Wins++;
+        hero.ExpectedWins += expectedWin;
         hero.AverageKDA = ((hero.AverageKDA * previousGames) + Mathf.Max(0f, kda)) / hero.Games;
         hero.ObjectiveParticipation = ((hero.ObjectiveParticipation * previousGames) + Mathf.Clamp01(objectiveParticipation)) / hero.Games;
+        hero.RoleAdjustedPerformance = ((hero.RoleAdjustedPerformance * previousGames) + Mathf.Clamp01(roleAdjustedPerformance)) / hero.Games;
     }
 
     public float GetSelectionPriorityScore(string playerId, string heroId)

@@ -29,17 +29,19 @@ public static class AOGChampionPresentationBuilder
     public static void RebuildAll()
     {
         EnsureFolders();
+        BuildChampion("lyra", "Lyra", ChampionArchetype.Duelist, true);
         BuildChampion("astryn", "Astryn", ChampionArchetype.Duelist, true);
         BuildChampion("nyxara", "Nyxara", ChampionArchetype.ArcaneCaster, true);
         BuildChampion("vorcalis", "Vorcalis", ChampionArchetype.Guardian, true);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("Aura of Gods: champion presentation controllers and profiles rebuilt.");
+        Debug.Log("Aura of Gods: Lyra and the original champion presentation assets were rebuilt.");
     }
 
-    private static void EnsureGeneratedAssets()
+    public static void EnsureGeneratedAssets()
     {
         EnsureFolders();
+        BuildChampion("lyra", "Lyra", ChampionArchetype.Duelist, false);
         BuildChampion("astryn", "Astryn", ChampionArchetype.Duelist, false);
         BuildChampion("nyxara", "Nyxara", ChampionArchetype.ArcaneCaster, false);
         BuildChampion("vorcalis", "Vorcalis", ChampionArchetype.Guardian, false);
@@ -84,8 +86,8 @@ public static class AOGChampionPresentationBuilder
         switch (archetype)
         {
             case ChampionArchetype.Duelist:
-                profile.basicAttackWindup = 0.16f;
-                profile.basicAttackRecovery = 0.14f;
+                profile.basicAttackWindup = id == "lyra" ? 0.18f : 0.16f;
+                profile.basicAttackRecovery = id == "lyra" ? 0.16f : 0.14f;
                 profile.basicAttackVariants = 3;
                 break;
             case ChampionArchetype.ArcaneCaster:
@@ -119,7 +121,7 @@ public static class AOGChampionPresentationBuilder
         controller.AddParameter("Death", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("Recall", AnimatorControllerParameterType.Trigger);
 
-        AnimatorStateMachine sm = controller.layers[0].stateMachine;
+        AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
         AnimationClip idle = LoadClip(Idle);
         AnimationClip run = LoadClip(Run);
 
@@ -130,58 +132,59 @@ public static class AOGChampionPresentationBuilder
             blendParameter = "Speed",
             useAutomaticThresholds = false
         };
+
         AssetDatabase.AddObjectToAsset(locomotionTree, controller);
         if (idle != null) locomotionTree.AddChild(idle, 0f);
         if (run != null) locomotionTree.AddChild(run, 1f);
 
-        AnimatorState locomotion = sm.AddState("Locomotion");
+        AnimatorState locomotion = stateMachine.AddState("Locomotion");
         locomotion.motion = locomotionTree;
-        sm.defaultState = locomotion;
+        stateMachine.defaultState = locomotion;
 
         AnimationClip attack0 = archetype == ChampionArchetype.ArcaneCaster ? LoadClip(Cast) : LoadClip(Attack);
         AnimationClip attack1 = archetype == ChampionArchetype.Guardian ? LoadClip(Block) : LoadClip(Slash2);
         AnimationClip attack2 = archetype == ChampionArchetype.ArcaneCaster ? LoadClip(PowerUp) : LoadClip(Slash3);
 
-        AddAttackState(sm, locomotion, "Attack_A", attack0, 0);
-        AddAttackState(sm, locomotion, "Attack_B", attack1, 1);
-        AddAttackState(sm, locomotion, "Attack_C", attack2, 2);
+        AddAttackState(stateMachine, locomotion, "Attack_A", attack0, 0);
+        AddAttackState(stateMachine, locomotion, "Attack_B", attack1, 1);
+        AddAttackState(stateMachine, locomotion, "Attack_C", attack2, 2);
 
         if (archetype == ChampionArchetype.Duelist)
         {
-            AddActionState(sm, locomotion, "Skill_Q", LoadClip(Slash2), "SkillQ");
-            AddActionState(sm, locomotion, "Skill_W", LoadClip(Kick), "SkillW");
-            AddActionState(sm, locomotion, "Skill_E", LoadClip(Slash3), "SkillE");
-            AddActionState(sm, locomotion, "Skill_R", LoadClip(PowerUp), "SkillR");
+            AddActionState(stateMachine, locomotion, "Skill_Q", LoadClip(Slash2), "SkillQ");
+            AddActionState(stateMachine, locomotion, "Skill_W", LoadClip(Kick), "SkillW");
+            AddActionState(stateMachine, locomotion, "Skill_E", LoadClip(Slash3), "SkillE");
+            AddActionState(stateMachine, locomotion, "Skill_R", LoadClip(PowerUp), "SkillR");
         }
         else if (archetype == ChampionArchetype.ArcaneCaster)
         {
-            AddActionState(sm, locomotion, "Skill_Q", LoadClip(Cast), "SkillQ");
-            AddActionState(sm, locomotion, "Skill_W", LoadClip(PowerUp), "SkillW");
-            AddActionState(sm, locomotion, "Skill_E", LoadClip(Cast), "SkillE");
-            AddActionState(sm, locomotion, "Skill_R", LoadClip(PowerUp), "SkillR");
+            AddActionState(stateMachine, locomotion, "Skill_Q", LoadClip(Cast), "SkillQ");
+            AddActionState(stateMachine, locomotion, "Skill_W", LoadClip(PowerUp), "SkillW");
+            AddActionState(stateMachine, locomotion, "Skill_E", LoadClip(Cast), "SkillE");
+            AddActionState(stateMachine, locomotion, "Skill_R", LoadClip(PowerUp), "SkillR");
         }
         else
         {
-            AddActionState(sm, locomotion, "Skill_Q", LoadClip(Block), "SkillQ");
-            AddActionState(sm, locomotion, "Skill_W", LoadClip(Attack), "SkillW");
-            AddActionState(sm, locomotion, "Skill_E", LoadClip(Impact), "SkillE");
-            AddActionState(sm, locomotion, "Skill_R", LoadClip(PowerUp), "SkillR");
+            AddActionState(stateMachine, locomotion, "Skill_Q", LoadClip(Block), "SkillQ");
+            AddActionState(stateMachine, locomotion, "Skill_W", LoadClip(Attack), "SkillW");
+            AddActionState(stateMachine, locomotion, "Skill_E", LoadClip(Impact), "SkillE");
+            AddActionState(stateMachine, locomotion, "Skill_R", LoadClip(PowerUp), "SkillR");
         }
 
-        AddActionState(sm, locomotion, "Hit", LoadClip(Impact), "Hit", 0.04f);
-        AddActionState(sm, locomotion, "Recall", LoadClip(PowerUp), "Recall", 0.12f);
-        AddDeathState(sm, "Death", LoadClip(Death));
+        AddActionState(stateMachine, locomotion, "Hit", LoadClip(Impact), "Hit", 0.04f);
+        AddActionState(stateMachine, locomotion, "Recall", LoadClip(PowerUp), "Recall", 0.12f);
+        AddDeathState(stateMachine, "Death", LoadClip(Death));
 
         EditorUtility.SetDirty(controller);
         return controller;
     }
 
-    private static void AddAttackState(AnimatorStateMachine sm, AnimatorState locomotion, string stateName, Motion motion, int attackIndex)
+    private static void AddAttackState(AnimatorStateMachine stateMachine, AnimatorState locomotion, string stateName, Motion motion, int attackIndex)
     {
-        AnimatorState state = sm.AddState(stateName);
+        AnimatorState state = stateMachine.AddState(stateName);
         state.motion = motion;
 
-        AnimatorStateTransition enter = sm.AddAnyStateTransition(state);
+        AnimatorStateTransition enter = stateMachine.AddAnyStateTransition(state);
         enter.hasExitTime = false;
         enter.duration = 0.06f;
         enter.canTransitionToSelf = false;
@@ -194,12 +197,12 @@ public static class AOGChampionPresentationBuilder
         exit.duration = 0.08f;
     }
 
-    private static void AddActionState(AnimatorStateMachine sm, AnimatorState locomotion, string stateName, Motion motion, string trigger, float transitionDuration = 0.07f)
+    private static void AddActionState(AnimatorStateMachine stateMachine, AnimatorState locomotion, string stateName, Motion motion, string trigger, float transitionDuration = 0.07f)
     {
-        AnimatorState state = sm.AddState(stateName);
+        AnimatorState state = stateMachine.AddState(stateName);
         state.motion = motion;
 
-        AnimatorStateTransition enter = sm.AddAnyStateTransition(state);
+        AnimatorStateTransition enter = stateMachine.AddAnyStateTransition(state);
         enter.hasExitTime = false;
         enter.duration = transitionDuration;
         enter.canTransitionToSelf = false;
@@ -211,12 +214,12 @@ public static class AOGChampionPresentationBuilder
         exit.duration = 0.09f;
     }
 
-    private static void AddDeathState(AnimatorStateMachine sm, string stateName, Motion motion)
+    private static void AddDeathState(AnimatorStateMachine stateMachine, string stateName, Motion motion)
     {
-        AnimatorState state = sm.AddState(stateName);
+        AnimatorState state = stateMachine.AddState(stateName);
         state.motion = motion;
 
-        AnimatorStateTransition enter = sm.AddAnyStateTransition(state);
+        AnimatorStateTransition enter = stateMachine.AddAnyStateTransition(state);
         enter.hasExitTime = false;
         enter.duration = 0.08f;
         enter.canTransitionToSelf = false;

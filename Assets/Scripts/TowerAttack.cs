@@ -129,17 +129,19 @@ public class TowerAttack : MonoBehaviour
     void ShootProjectile(Minion minionTarget, Champion championTarget, float damage)
     {
         Vector3 spawnPos = transform.position + Vector3.up * shootHeight;
-        GameObject projectile = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        projectile.name = "Tower_Energy_Bolt";
+        AOGObjectPoolRuntime pool = AOGObjectPoolRuntime.Instance;
+        GameObject projectile = pool != null
+            ? pool.Get("TowerBolt", CreateTowerBoltObject, spawnPos, Quaternion.identity)
+            : CreateTowerBoltObject();
+
         projectile.transform.position = spawnPos;
         projectile.transform.localScale = Vector3.one * projectileSize;
 
         Renderer renderer = projectile.GetComponent<Renderer>();
         if (renderer != null)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            Material mat = new Material(shader);
             Color color = towerHealth.towerTeam == MinionTeam.Blue ? new Color(0.2f, 0.7f, 1f) : new Color(1f, 0.1f, 0.05f);
+            Material mat = renderer.material;
             mat.color = color;
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
             if (mat.HasProperty("_EmissionColor"))
@@ -147,19 +149,35 @@ public class TowerAttack : MonoBehaviour
                 mat.EnableKeyword("_EMISSION");
                 mat.SetColor("_EmissionColor", color * 2.5f);
             }
-            renderer.material = mat;
         }
 
-        Collider col = projectile.GetComponent<Collider>();
-        if (col != null) Destroy(col);
-
-        TowerBolt bolt = projectile.AddComponent<TowerBolt>();
+        TowerBolt bolt = projectile.GetComponent<TowerBolt>();
         bolt.minionTarget = minionTarget;
         bolt.championTarget = championTarget;
         bolt.damage = damage;
         bolt.speed = projectileSpeed;
 
         AOGAudioDirectorRuntime.Instance?.PlayCue(AOGAudioCue.TowerShot, spawnPos);
+    }
+
+    private GameObject CreateTowerBoltObject()
+    {
+        GameObject projectile = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        projectile.name = "Tower_Energy_Bolt";
+
+        Renderer renderer = projectile.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            renderer.material = new Material(shader);
+        }
+
+        Collider col = projectile.GetComponent<Collider>();
+        if (col != null) Destroy(col);
+
+        if (projectile.GetComponent<TowerBolt>() == null)
+            projectile.AddComponent<TowerBolt>();
+        return projectile;
     }
 
     static float FlatDistance(Vector3 a, Vector3 b)

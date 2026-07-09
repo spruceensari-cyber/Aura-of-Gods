@@ -9,13 +9,23 @@ public class TowerBolt : MonoBehaviour
     public float lifeTime = 3f;
     public DamageType championDamageType = DamageType.Magical;
 
-    void Start()
+    private float expiresAt;
+    private AOGPooledObject pooled;
+
+    void OnEnable()
     {
-        Destroy(gameObject, lifeTime);
+        expiresAt = Time.time + lifeTime;
+        pooled = GetComponent<AOGPooledObject>();
     }
 
     void Update()
     {
+        if (Time.time >= expiresAt)
+        {
+            Release();
+            return;
+        }
+
         Transform targetTransform = null;
         if (minionTarget != null)
             targetTransform = minionTarget.transform;
@@ -24,7 +34,7 @@ public class TowerBolt : MonoBehaviour
 
         if (targetTransform == null)
         {
-            Destroy(gameObject);
+            Release();
             return;
         }
 
@@ -39,7 +49,17 @@ public class TowerBolt : MonoBehaviour
                 championTarget.TakeDamage(damage, championDamageType);
 
             AOGAudioDirectorRuntime.Instance?.PlayCue(AOGAudioCue.AbilityImpact, targetPos);
-            Destroy(gameObject);
+            Release();
         }
+    }
+
+    private void Release()
+    {
+        minionTarget = null;
+        championTarget = null;
+        if (pooled != null)
+            pooled.Release();
+        else
+            Destroy(gameObject);
     }
 }

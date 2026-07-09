@@ -89,9 +89,6 @@ public static class AOGChampionCatalog
         };
     }
 
-    /// <summary>
-    /// Heavy Vanguard built around creating temporary terrain pressure and controlling routes.
-    /// </summary>
     public static AOGChampionBlueprint CreateKharvos()
     {
         return new AOGChampionBlueprint
@@ -114,6 +111,35 @@ public static class AOGChampionCatalog
                 Ability(AbilityKey.W, AbilityType.AOE, "Gravestone Rampart", "Raise a temporary stone wall that blocks passage and splits team formations.", 55f, 14f, 0.28f, 35f, 0.15f, 8f, 4.6f),
                 Ability(AbilityKey.E, AbilityType.Instant, "Seismic Guard", "Harden the body, pulse nearby enemies and gain a short defensive window.", 50f, 11f, 0.05f, 45f, 0.20f, 0.1f, 4.5f),
                 Ability(AbilityKey.R, AbilityType.AOE, "Worldbreak", "Create a collapsing ring of stone that reshapes the fight and detonates toward the center.", 100f, 85f, 0.8f, 210f, 0.55f, 10f, 7.5f)
+            }
+        };
+    }
+
+    /// <summary>
+    /// Precision marksman who bends the route of her shots after firing.
+    /// </summary>
+    public static AOGChampionBlueprint CreateVeyra()
+    {
+        return new AOGChampionBlueprint
+        {
+            id = "veyra_vector_saint",
+            displayName = "Veyra",
+            title = "Vector Saint",
+            fantasy = "A future-born marksman who writes trajectory commands into the air and bends projectiles around terrain and frontline cover.",
+            primaryRole = AOGCombatRole.Marksman,
+            secondaryRole = AOGCombatRole.Controller,
+            bonusAttackDamage = 15f,
+            bonusAbilityPower = 6f,
+            bonusArmor = 1f,
+            bonusSpellBlock = 2f,
+            bonusMoveSpeed = 0.30f,
+            bonusAttackSpeed = 0.22f,
+            abilities = new[]
+            {
+                Ability(AbilityKey.Q, AbilityType.Linear, "Vector Shot", "Fire a guided bolt that curves toward the stored command point before accelerating into the target line.", 30f, 4.8f, 0.06f, 62f, 0.25f, 13f, 1f),
+                Ability(AbilityKey.W, AbilityType.AOE, "Orbit Beacon", "Place a beacon that bends nearby Veyra projectiles and reveals a precision firing corridor.", 45f, 12f, 0.15f, 25f, 0.10f, 10f, 3f),
+                Ability(AbilityKey.E, AbilityType.Instant, "Slipstream Reload", "Dash a short distance and supercharge the next attack sequence with attack speed.", 40f, 10f, 0.05f, 0f, 0f, 0.1f, 0.1f),
+                Ability(AbilityKey.R, AbilityType.Linear, "Heavenline", "Launch a piercing long-range rail shot whose path bends once through the last active beacon.", 100f, 78f, 0.85f, 240f, 0.40f, 22f, 1.4f)
             }
         };
     }

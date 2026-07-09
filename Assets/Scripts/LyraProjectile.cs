@@ -4,6 +4,8 @@ public class LyraProjectile : MonoBehaviour
 {
     public Minion target;
     public GameObject owner;
+    public ChampionPresentationController presentation;
+    public int abilitySlot = 0;
     public float damage = 80f;
     public float speed = 20f;
     public Color color = new Color(1f, 0.05f, 0.65f);
@@ -31,6 +33,7 @@ public class LyraProjectile : MonoBehaviour
         if (damage > 0f)
             target.TakeDamage(damage, owner != null ? owner : gameObject);
 
+        presentation?.SpawnAbilityImpactVfx(targetPosition, abilitySlot);
         Destroy(gameObject);
     }
 }

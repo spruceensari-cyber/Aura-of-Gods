@@ -29,16 +29,17 @@ public class AOGCharacterAutoInstaller : MonoBehaviour
     public void SetupAllPlayerNamedCharacters()
     {
         GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-
         int count = 0;
 
         foreach (GameObject obj in allObjects)
         {
-            string n = obj.name.ToLower();
-
+            string n = obj.name.ToLowerInvariant();
             bool looksLikePlayer =
                 n.Contains("player") ||
                 n.Contains("kaelith") ||
+                n.Contains("astryn") ||
+                n.Contains("nyxara") ||
+                n.Contains("vorcalis") ||
                 n.Contains("hero") ||
                 n.Contains("character");
 
@@ -52,10 +53,9 @@ public class AOGCharacterAutoInstaller : MonoBehaviour
         Debug.Log("Karakter setup tamamlandı. Sayı: " + count);
     }
 
-    void SetupCharacter(GameObject obj)
+    private void SetupCharacter(GameObject obj)
     {
         AOGCharacterStats stats = obj.GetComponent<AOGCharacterStats>();
-
         if (stats == null)
             stats = obj.AddComponent<AOGCharacterStats>();
 
@@ -66,13 +66,23 @@ public class AOGCharacterAutoInstaller : MonoBehaviour
         stats.attackDamage = playerAttackDamage;
         stats.attackRange = playerAttackRange;
 
-        AOGPlayerMOBAController controller = obj.GetComponent<AOGPlayerMOBAController>();
+        ChampionAudioController audio = obj.GetComponent<ChampionAudioController>();
+        if (audio == null)
+            audio = obj.AddComponent<ChampionAudioController>();
 
+        ChampionPresentationController presentation = obj.GetComponent<ChampionPresentationController>();
+        if (presentation == null)
+            presentation = obj.AddComponent<ChampionPresentationController>();
+
+        presentation.audioController = audio;
+
+        AOGPlayerMOBAController controller = obj.GetComponent<AOGPlayerMOBAController>();
         if (controller == null)
             controller = obj.AddComponent<AOGPlayerMOBAController>();
 
-        Collider collider = obj.GetComponent<Collider>();
+        controller.presentation = presentation;
 
+        Collider collider = obj.GetComponent<Collider>();
         if (collider == null)
         {
             CapsuleCollider capsule = obj.AddComponent<CapsuleCollider>();
@@ -82,13 +92,11 @@ public class AOGCharacterAutoInstaller : MonoBehaviour
         }
 
         Rigidbody rb = obj.GetComponent<Rigidbody>();
-
         if (rb == null)
             rb = obj.AddComponent<Rigidbody>();
 
         rb.useGravity = false;
         rb.isKinematic = true;
-
         obj.tag = "Player";
 
         Debug.Log("Karakter hazırlandı: " + obj.name);

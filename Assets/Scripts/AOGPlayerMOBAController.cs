@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 public class AOGPlayerMOBAController : MonoBehaviour
@@ -5,6 +6,7 @@ public class AOGPlayerMOBAController : MonoBehaviour
     [Header("References")]
     public Camera mainCamera;
     public Animator animator;
+    public ChampionPresentationController presentation;
 
     [Header("Movement")]
     public LayerMask groundMask = ~0;
@@ -12,6 +14,7 @@ public class AOGPlayerMOBAController : MonoBehaviour
 
     [Header("Auto Attack")]
     public bool autoAttackNearestEnemy = true;
+    public float attackRangeTolerance = 0.8f;
 
     private AOGCharacterStats stats;
     private Vector3 moveTarget;
@@ -21,11 +24,12 @@ public class AOGPlayerMOBAController : MonoBehaviour
     private TowerHealth targetTower;
 
     private float nextAttackTime;
+    private Coroutine attackRoutine;
+    private Vector3 lastFramePosition;
 
-    void Start()
+    private void Start()
     {
         stats = GetComponent<AOGCharacterStats>();
-
         if (stats == null)
             stats = gameObject.AddComponent<AOGCharacterStats>();
 
@@ -35,65 +39,77 @@ public class AOGPlayerMOBAController : MonoBehaviour
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
 
+        if (presentation == null)
+            presentation = GetComponent<ChampionPresentationController>();
+
+        if (presentation == null)
+        {
+            ChampionAudioController audio = GetComponent<ChampionAudioController>();
+            if (audio == null)
+                audio = gameObject.AddComponent<ChampionAudioController>();
+
+            presentation = gameObject.AddComponent<ChampionPresentationController>();
+            presentation.animator = animator;
+            presentation.audioController = audio;
+        }
+
         moveTarget = transform.position;
+        lastFramePosition = transform.position;
     }
 
-    void Update()
+    private void Update()
     {
         if (stats == null || stats.IsDead)
             return;
 
         if (Input.GetKeyDown(KeyCode.S))
-        {
             StopAllActions();
-        }
 
         HandleMouseInput();
         HandleMovement();
         HandleAttackLogic();
-        UpdateAnimator();
+        UpdateAnimationVelocity();
     }
 
-    void HandleMouseInput()
+    private void HandleMouseInput()
     {
-        if (!Input.GetMouseButtonDown(1))
+        if (!Input.GetMouseButtonDown(1) || mainCamera == null)
             return;
 
         Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+        if (!Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+            return;
+
+        Minion clickedMinion = hit.collider.GetComponentInParent<Minion>();
+        TowerHealth clickedTower = hit.collider.GetComponentInParent<TowerHealth>();
+
+        if (clickedMinion != null && clickedMinion.team != stats.team)
         {
-            Minion clickedMinion = hit.collider.GetComponentInParent<Minion>();
-            TowerHealth clickedTower = hit.collider.GetComponentInParent<TowerHealth>();
-
-            if (clickedMinion != null && clickedMinion.team != stats.team)
-            {
-                targetMinion = clickedMinion;
-                targetTower = null;
-                hasMoveTarget = false;
-                return;
-            }
-
-            if (clickedTower != null && clickedTower.towerTeam != stats.team)
-            {
-                targetTower = clickedTower;
-                targetMinion = null;
-                hasMoveTarget = false;
-                return;
-            }
-
-            moveTarget = hit.point;
-            moveTarget.y = transform.position.y;
-
-            targetMinion = null;
+            targetMinion = clickedMinion;
             targetTower = null;
-            hasMoveTarget = true;
+            hasMoveTarget = false;
+            return;
         }
+
+        if (clickedTower != null && clickedTower.towerTeam != stats.team)
+        {
+            targetTower = clickedTower;
+            targetMinion = null;
+            hasMoveTarget = false;
+            return;
+        }
+
+        moveTarget = hit.point;
+        moveTarget.y = transform.position.y;
+        targetMinion = null;
+        targetTower = null;
+        hasMoveTarget = true;
     }
 
-    void HandleMovement()
+    private void HandleMovement()
     {
-        if (!hasMoveTarget)
+        if (!hasMoveTarget || attackRoutine != null)
             return;
 
         Vector3 direction = moveTarget - transform.position;
@@ -109,8 +125,11 @@ public class AOGPlayerMOBAController : MonoBehaviour
         FaceTarget(moveTarget);
     }
 
-    void HandleAttackLogic()
+    private void HandleAttackLogic()
     {
+        if (attackRoutine != null)
+            return;
+
         if (targetMinion != null)
         {
             AttackSelectedMinion();
@@ -126,7 +145,6 @@ public class AOGPlayerMOBAController : MonoBehaviour
         if (autoAttackNearestEnemy && !hasMoveTarget)
         {
             Minion nearest = FindNearestEnemyMinion(stats.attackRange);
-
             if (nearest != null)
             {
                 targetMinion = nearest;
@@ -135,7 +153,7 @@ public class AOGPlayerMOBAController : MonoBehaviour
         }
     }
 
-    void AttackSelectedMinion()
+    private void AttackSelectedMinion()
     {
         if (targetMinion == null || targetMinion.hp <= 0f)
         {
@@ -144,7 +162,6 @@ public class AOGPlayerMOBAController : MonoBehaviour
         }
 
         float distance = FlatDistance(transform.position, targetMinion.transform.position);
-
         if (distance > stats.attackRange)
         {
             MoveTowardTarget(targetMinion.transform.position);
@@ -154,28 +171,39 @@ public class AOGPlayerMOBAController : MonoBehaviour
         hasMoveTarget = false;
         FaceTarget(targetMinion.transform.position);
 
-        if (Time.time >= nextAttackTime)
-        {
-            nextAttackTime = Time.time + stats.attackCooldown;
+        if (Time.time < nextAttackTime)
+            return;
 
-            targetMinion.TakeDamage(stats.attackDamage, gameObject);
-
-            AOGSimpleCombatAnimator visual = GetComponent<AOGSimpleCombatAnimator>();
-if (visual != null)
-    visual.PlayAttack();
-
-            LyraSkillSet lyra = GetComponent<LyraSkillSet>();
-            if (lyra != null)
-                lyra.EmpoweredBasicAttack(targetMinion);
-
-            if (animator != null)
-                animator.SetTrigger("Attack");
-
-            Debug.Log(name + " auto attack yaptı -> " + targetMinion.name);
-        }
+        nextAttackTime = Time.time + stats.attackCooldown;
+        Minion lockedTarget = targetMinion;
+        presentation?.PlayBasicAttack();
+        float windup = presentation != null ? presentation.BasicAttackWindup : Mathf.Min(0.22f, stats.attackCooldown * 0.35f);
+        attackRoutine = StartCoroutine(ResolveMinionAttack(lockedTarget, windup));
     }
 
-    void AttackSelectedTower()
+    private IEnumerator ResolveMinionAttack(Minion lockedTarget, float windup)
+    {
+        if (windup > 0f)
+            yield return new WaitForSeconds(windup);
+
+        if (lockedTarget != null && lockedTarget.gameObject.activeInHierarchy && lockedTarget.hp > 0f)
+        {
+            float distance = FlatDistance(transform.position, lockedTarget.transform.position);
+            if (distance <= stats.attackRange + attackRangeTolerance)
+            {
+                lockedTarget.TakeDamage(stats.attackDamage, gameObject);
+                if (presentation != null)
+                {
+                    presentation.audioController?.PlayAttackImpact();
+                    presentation.SpawnImpactVfx(lockedTarget.transform.position + Vector3.up * 0.8f);
+                }
+            }
+        }
+
+        attackRoutine = null;
+    }
+
+    private void AttackSelectedTower()
     {
         if (targetTower == null || targetTower.hp <= 0f)
         {
@@ -184,8 +212,9 @@ if (visual != null)
         }
 
         float distance = FlatDistance(transform.position, targetTower.transform.position);
+        float allowedRange = stats.attackRange + 3f;
 
-        if (distance > stats.attackRange + 3f)
+        if (distance > allowedRange)
         {
             MoveTowardTarget(targetTower.transform.position);
             return;
@@ -194,38 +223,50 @@ if (visual != null)
         hasMoveTarget = false;
         FaceTarget(targetTower.transform.position);
 
-        if (Time.time >= nextAttackTime)
-        {
-            nextAttackTime = Time.time + stats.attackCooldown;
+        if (Time.time < nextAttackTime)
+            return;
 
-            targetTower.TakeDamage(stats.attackDamage);
-
-AOGSimpleCombatAnimator visual = GetComponent<AOGSimpleCombatAnimator>();
-if (visual != null)
-    visual.PlayAttack();
-            if (animator != null)
-                animator.SetTrigger("Attack");
-
-            Debug.Log(name + " kuleye auto attack yaptı -> " + targetTower.name);
-        }
+        nextAttackTime = Time.time + stats.attackCooldown;
+        TowerHealth lockedTarget = targetTower;
+        presentation?.PlayBasicAttack();
+        float windup = presentation != null ? presentation.BasicAttackWindup : Mathf.Min(0.22f, stats.attackCooldown * 0.35f);
+        attackRoutine = StartCoroutine(ResolveTowerAttack(lockedTarget, windup, allowedRange));
     }
 
-    Minion FindNearestEnemyMinion(float range)
+    private IEnumerator ResolveTowerAttack(TowerHealth lockedTarget, float windup, float allowedRange)
+    {
+        if (windup > 0f)
+            yield return new WaitForSeconds(windup);
+
+        if (lockedTarget != null && lockedTarget.gameObject.activeInHierarchy && lockedTarget.hp > 0f)
+        {
+            float distance = FlatDistance(transform.position, lockedTarget.transform.position);
+            if (distance <= allowedRange + attackRangeTolerance)
+            {
+                lockedTarget.TakeDamage(stats.attackDamage);
+                if (presentation != null)
+                {
+                    presentation.audioController?.PlayAttackImpact();
+                    presentation.SpawnImpactVfx(lockedTarget.transform.position + Vector3.up * 1.5f);
+                }
+            }
+        }
+
+        attackRoutine = null;
+    }
+
+    private Minion FindNearestEnemyMinion(float range)
     {
         Minion[] minions = FindObjectsByType<Minion>(FindObjectsSortMode.None);
-
         Minion closest = null;
         float closestDistance = Mathf.Infinity;
 
         foreach (Minion m in minions)
         {
-            if (m == null) continue;
-            if (!m.gameObject.activeInHierarchy) continue;
-            if (m.hp <= 0f) continue;
-            if (m.team == stats.team) continue;
+            if (m == null || !m.gameObject.activeInHierarchy || m.hp <= 0f || m.team == stats.team)
+                continue;
 
             float distance = FlatDistance(transform.position, m.transform.position);
-
             if (distance <= range && distance < closestDistance)
             {
                 closest = m;
@@ -236,7 +277,7 @@ if (visual != null)
         return closest;
     }
 
-    void MoveTowardTarget(Vector3 target)
+    private void MoveTowardTarget(Vector3 target)
     {
         Vector3 direction = target - transform.position;
         direction.y = 0f;
@@ -248,44 +289,69 @@ if (visual != null)
         FaceTarget(target);
     }
 
-    void StopAllActions()
+    private void StopAllActions()
     {
         hasMoveTarget = false;
         targetMinion = null;
         targetTower = null;
 
-        if (animator != null)
-            animator.SetFloat("Speed", 0f);
+        if (attackRoutine != null)
+        {
+            StopCoroutine(attackRoutine);
+            attackRoutine = null;
+        }
 
-        Debug.Log(name + " durdu.");
+        presentation?.SetPlanarVelocity(Vector3.zero);
+        SetAnimatorFloatIfPresent("Speed", 0f);
     }
 
-    void FaceTarget(Vector3 target)
+    private void FaceTarget(Vector3 target)
     {
         Vector3 direction = target - transform.position;
         direction.y = 0f;
 
-        if (direction == Vector3.zero)
+        if (direction.sqrMagnitude < 0.0001f)
             return;
 
         Quaternion lookRotation = Quaternion.LookRotation(direction);
         transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, 12f * Time.deltaTime);
     }
 
-    float FlatDistance(Vector3 a, Vector3 b)
+    private static float FlatDistance(Vector3 a, Vector3 b)
     {
         a.y = 0f;
         b.y = 0f;
         return Vector3.Distance(a, b);
     }
 
-    void UpdateAnimator()
+    private void UpdateAnimationVelocity()
+    {
+        float delta = Mathf.Max(Time.deltaTime, 0.0001f);
+        Vector3 velocity = (transform.position - lastFramePosition) / delta;
+        velocity.y = 0f;
+        lastFramePosition = transform.position;
+
+        if (presentation != null)
+        {
+            presentation.SetPlanarVelocity(velocity);
+            return;
+        }
+
+        SetAnimatorFloatIfPresent("Speed", Mathf.Clamp01(velocity.magnitude / Mathf.Max(stats.moveSpeed, 0.01f)));
+    }
+
+    private void SetAnimatorFloatIfPresent(string parameterName, float value)
     {
         if (animator == null)
             return;
 
-        float speedValue = hasMoveTarget ? 1f : 0f;
-
-        animator.SetFloat("Speed", speedValue);
+        foreach (AnimatorControllerParameter parameter in animator.parameters)
+        {
+            if (parameter.name == parameterName && parameter.type == AnimatorControllerParameterType.Float)
+            {
+                animator.SetFloat(parameterName, value);
+                return;
+            }
+        }
     }
 }

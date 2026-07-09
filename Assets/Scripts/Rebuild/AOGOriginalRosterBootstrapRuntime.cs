@@ -5,6 +5,7 @@ using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Installs the clean three-hero vertical-slice roster on the local player and first combat bots.
+/// Legacy pilot runtimes are disabled so they cannot reinstall old kits after the rebuild roster is active.
 /// </summary>
 public class AOGOriginalRosterBootstrapRuntime : MonoBehaviour
 {
@@ -22,7 +23,11 @@ public class AOGOriginalRosterBootstrapRuntime : MonoBehaviour
     {
         Ensure();
         AOGOriginalRosterBootstrapRuntime runtime = FindObjectOfType<AOGOriginalRosterBootstrapRuntime>();
-        if (runtime != null) runtime.installed = false;
+        if (runtime != null)
+        {
+            runtime.installed = false;
+            runtime.DisableLegacyPilotRuntimes();
+        }
     }
 
     private static void Ensure()
@@ -34,15 +39,30 @@ public class AOGOriginalRosterBootstrapRuntime : MonoBehaviour
     private void Awake()
     {
         DontDestroyOnLoad(gameObject);
+        DisableLegacyPilotRuntimes();
     }
 
     private void Update()
     {
         if (installed) return;
+        DisableLegacyPilotRuntimes();
+
         ChampionController local = FindObjectOfType<ChampionController>();
         if (local == null) return;
         StartCoroutine(InstallRoster(local));
         installed = true;
+    }
+
+    private void DisableLegacyPilotRuntimes()
+    {
+        MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (MonoBehaviour behaviour in behaviours)
+        {
+            if (behaviour == null || behaviour == this) continue;
+            string n = behaviour.GetType().Name;
+            if (n == "AOGChampionPilotRuntime" || n == "AOGKharvosPilotRuntime")
+                behaviour.enabled = false;
+        }
     }
 
     private IEnumerator InstallRoster(ChampionController local)

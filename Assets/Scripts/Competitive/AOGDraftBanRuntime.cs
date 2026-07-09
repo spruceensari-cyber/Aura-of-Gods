@@ -1,144 +1,116 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
-public enum AOGDraftPhase { Idle, BlueBan, RedBan, BluePick, RedPick, Locked }
+public enum AOGDraftPhase { Idle, Claiming, Locked }
+
+public class AOGHeroClaim
+{
+    public string PlayerId;
+    public TeamType Team;
+    public string HeroId;
+    public float PriorityScore;
+    public float HeroWinRate;
+}
 
 /// <summary>
-/// Tournament draft flow with global hero uniqueness.
-/// The same hero can never be picked by both teams or twice within one match.
+/// Ban-free hero claim draft.
+/// Every account may choose any hero. If multiple players in the same match claim the same hero,
+/// the strongest proven hero performer receives that hero; speed of clicking is irrelevant.
 /// </summary>
 public class AOGDraftBanRuntime : MonoBehaviour
 {
     public AOGDraftPhase Phase { get; private set; } = AOGDraftPhase.Idle;
     public float PhaseRemaining { get; private set; }
-    public readonly List<string> BluePicks = new();
-    public readonly List<string> RedPicks = new();
-    public readonly List<string> BlueBans = new();
-    public readonly List<string> RedBans = new();
+    public readonly Dictionary<string, string> LockedHeroByPlayer = new();
 
-    [SerializeField] private float phaseSeconds = 25f;
-    [SerializeField] private int bansPerTeam = 3;
-    [SerializeField] private int picksPerTeam = 5;
+    [SerializeField] private float claimWindowSeconds = 35f;
 
-    public IEnumerable<string> AllBans
-    {
-        get
-        {
-            foreach (string hero in BlueBans) yield return hero;
-            foreach (string hero in RedBans) yield return hero;
-        }
-    }
+    private readonly List<AOGHeroClaim> claims = new();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Install()
     {
         if (FindObjectOfType<AOGDraftBanRuntime>() != null) return;
-        new GameObject("AOG_Draft_Ban_Runtime").AddComponent<AOGDraftBanRuntime>();
+        new GameObject("AOG_Hero_Claim_Draft_Runtime").AddComponent<AOGDraftBanRuntime>();
     }
 
     void Awake() => DontDestroyOnLoad(gameObject);
 
     void Update()
     {
-        if (Phase == AOGDraftPhase.Idle || Phase == AOGDraftPhase.Locked) return;
+        if (Phase != AOGDraftPhase.Claiming) return;
         PhaseRemaining -= Time.unscaledDeltaTime;
         if (PhaseRemaining <= 0f)
-            PhaseRemaining = 0f; // explicit choice required; no silent random pick or ban
+            ResolveClaims();
     }
 
     public void StartDraft()
     {
-        BluePicks.Clear();
-        RedPicks.Clear();
-        BlueBans.Clear();
-        RedBans.Clear();
-        SetPhase(AOGDraftPhase.BlueBan);
+        claims.Clear();
+        LockedHeroByPlayer.Clear();
+        Phase = AOGDraftPhase.Claiming;
+        PhaseRemaining = claimWindowSeconds;
     }
 
-    public bool Submit(string heroId)
+    public bool SubmitClaim(string playerId, TeamType team, string heroId)
     {
-        if (!IsHeroAvailable(heroId)) return false;
+        if (Phase != AOGDraftPhase.Claiming || string.IsNullOrWhiteSpace(playerId) || string.IsNullOrWhiteSpace(heroId))
+            return false;
 
-        switch (Phase)
+        claims.RemoveAll(c => c.PlayerId == playerId);
+        float priority = AOGHeroMasteryRuntime.Instance != null
+            ? AOGHeroMasteryRuntime.Instance.GetSelectionPriorityScore(playerId, heroId)
+            : 0f;
+        float winRate = AOGHeroMasteryRuntime.Instance != null
+            ? AOGHeroMasteryRuntime.Instance.GetHeroWinRate(playerId, heroId)
+            : 0.5f;
+
+        claims.Add(new AOGHeroClaim
         {
-            case AOGDraftPhase.BlueBan:
-                if (BlueBans.Count >= bansPerTeam) return false;
-                BlueBans.Add(heroId);
-                break;
-            case AOGDraftPhase.RedBan:
-                if (RedBans.Count >= bansPerTeam) return false;
-                RedBans.Add(heroId);
-                break;
-            case AOGDraftPhase.BluePick:
-                if (BluePicks.Count >= picksPerTeam) return false;
-                BluePicks.Add(heroId);
-                break;
-            case AOGDraftPhase.RedPick:
-                if (RedPicks.Count >= picksPerTeam) return false;
-                RedPicks.Add(heroId);
-                break;
-            default:
-                return false;
-        }
+            PlayerId = playerId,
+            Team = team,
+            HeroId = heroId,
+            PriorityScore = priority,
+            HeroWinRate = winRate
+        });
 
-        AOGReplayEventLogRuntime.Instance?.Record("DraftChoice", Phase.ToString(), heroId, Vector3.zero);
-        Advance();
+        AOGReplayEventLogRuntime.Instance?.Record("HeroClaim", playerId, heroId, Vector3.zero);
         return true;
     }
 
-    public bool IsHeroAvailable(string heroId)
+    public void ResolveClaims()
     {
-        if (string.IsNullOrWhiteSpace(heroId)) return false;
-        return !BlueBans.Contains(heroId)
-            && !RedBans.Contains(heroId)
-            && !BluePicks.Contains(heroId)
-            && !RedPicks.Contains(heroId);
-    }
+        if (Phase != AOGDraftPhase.Claiming) return;
 
-    public IReadOnlyList<string> RecommendBansForBlue(IEnumerable<string> redPlayerIds, int count = 3)
-    {
-        return AOGHeroMasteryRuntime.Instance != null
-            ? AOGHeroMasteryRuntime.Instance.RecommendBans(redPlayerIds, count)
-            : new List<string>();
-    }
+        LockedHeroByPlayer.Clear();
 
-    public IReadOnlyList<string> RecommendBansForRed(IEnumerable<string> bluePlayerIds, int count = 3)
-    {
-        return AOGHeroMasteryRuntime.Instance != null
-            ? AOGHeroMasteryRuntime.Instance.RecommendBans(bluePlayerIds, count)
-            : new List<string>();
-    }
-
-    void Advance()
-    {
-        if (BlueBans.Count < bansPerTeam || RedBans.Count < bansPerTeam)
+        foreach (IGrouping<string, AOGHeroClaim> group in claims.GroupBy(c => c.HeroId))
         {
-            if (Phase == AOGDraftPhase.BlueBan) SetPhase(AOGDraftPhase.RedBan);
-            else SetPhase(AOGDraftPhase.BlueBan);
-            return;
+            AOGHeroClaim winner = group
+                .OrderByDescending(c => c.PriorityScore)
+                .ThenByDescending(c => c.HeroWinRate)
+                .ThenBy(c => c.PlayerId)
+                .First();
+
+            LockedHeroByPlayer[winner.PlayerId] = winner.HeroId;
+            AOGReplayEventLogRuntime.Instance?.Record("HeroClaimWon", winner.PlayerId, winner.HeroId, Vector3.zero);
         }
 
-        if (BluePicks.Count >= picksPerTeam && RedPicks.Count >= picksPerTeam)
-        {
-            SetPhase(AOGDraftPhase.Locked);
-            return;
-        }
-
-        if (Phase == AOGDraftPhase.BlueBan || Phase == AOGDraftPhase.RedBan)
-        {
-            SetPhase(AOGDraftPhase.BluePick);
-            return;
-        }
-
-        if (Phase == AOGDraftPhase.BluePick)
-            SetPhase(AOGDraftPhase.RedPick);
-        else
-            SetPhase(AOGDraftPhase.BluePick);
+        Phase = AOGDraftPhase.Locked;
+        PhaseRemaining = 0f;
     }
 
-    void SetPhase(AOGDraftPhase phase)
+    public bool HasWonHero(string playerId, string heroId)
     {
-        Phase = phase;
-        PhaseRemaining = phaseSeconds;
+        return LockedHeroByPlayer.TryGetValue(playerId, out string locked) && locked == heroId;
+    }
+
+    public IReadOnlyList<AOGHeroClaim> GetClaimsForHero(string heroId)
+    {
+        return claims.Where(c => c.HeroId == heroId)
+            .OrderByDescending(c => c.PriorityScore)
+            .ThenByDescending(c => c.HeroWinRate)
+            .ToList();
     }
 }

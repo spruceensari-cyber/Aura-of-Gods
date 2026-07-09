@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public enum AbilityKey
 {
@@ -69,7 +70,6 @@ public class ChampionAbility : MonoBehaviour
     {
         if (champion == null)
             champion = GetComponent<Champion>();
-
         nextAvailableTime = 0f;
     }
 
@@ -121,7 +121,6 @@ public class ChampionAbility : MonoBehaviour
         {
             if (targetChampion == null || targetChampion == champion || targetChampion.Team == champion.Team)
                 return false;
-
             if (Vector3.Distance(transform.position, targetChampion.transform.position) > range)
                 return false;
         }
@@ -151,7 +150,6 @@ public class ChampionAbility : MonoBehaviour
     private IEnumerator CastRoutine(Vector3 targetPosition, Champion targetChampion)
     {
         champion.IsCasting = true;
-
         if (castTime > 0f)
             yield return new WaitForSeconds(castTime);
 
@@ -163,33 +161,31 @@ public class ChampionAbility : MonoBehaviour
         float remaining = GetCooldownRemaining();
         if (remaining > 0f)
             yield return new WaitForSeconds(remaining);
-
         OnCooldownReady?.Invoke(this);
     }
 
     private void ExecuteAbility(Vector3 targetPosition, Champion targetChampion)
     {
-        float damage = baseDamage + (champion.AbilityPower * abilityPower);
+        float damage = baseDamage + champion.AbilityPower * abilityPower;
 
         switch (abilityType)
         {
             case AbilityType.SingleTarget:
                 if (targetChampion != null && targetChampion.Team != champion.Team)
+                {
+                    ReportChampionHit(targetChampion);
                     targetChampion.TakeDamage(damage, DamageType.Magical);
+                }
                 break;
-
             case AbilityType.AOE:
                 DealAOEDamage(targetPosition, damage);
                 break;
-
             case AbilityType.Linear:
                 DealLinearDamage(targetPosition, damage);
                 break;
-
             case AbilityType.Instant:
                 DealAOEDamage(transform.position, damage);
                 break;
-
             case AbilityType.Channeled:
                 DealAOEDamage(targetPosition, damage);
                 break;
@@ -199,14 +195,21 @@ public class ChampionAbility : MonoBehaviour
     private void DealAOEDamage(Vector3 center, float damage)
     {
         Collider[] hits = Physics.OverlapSphere(center, aoeRadius);
+        HashSet<Champion> hitChampions = new();
+        HashSet<CombatUnit> hitUnits = new();
+
         foreach (Collider hit in hits)
         {
             Champion targetChampion = hit.GetComponentInParent<Champion>();
-            if (targetChampion != null && targetChampion != champion && targetChampion.Team != champion.Team)
+            if (targetChampion != null && targetChampion != champion && targetChampion.Team != champion.Team && hitChampions.Add(targetChampion))
+            {
+                ReportChampionHit(targetChampion);
                 targetChampion.TakeDamage(damage, DamageType.Magical);
+                continue;
+            }
 
             CombatUnit targetUnit = hit.GetComponentInParent<CombatUnit>();
-            if (targetUnit != null && targetUnit.UnitTeam != champion.Team)
+            if (targetUnit != null && targetUnit.UnitTeam != champion.Team && hitUnits.Add(targetUnit))
                 targetUnit.TakeDamage(damage);
         }
     }
@@ -221,22 +224,31 @@ public class ChampionAbility : MonoBehaviour
         RaycastHit[] hits = Physics.RaycastAll(transform.position, direction.normalized, range);
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
+        HashSet<Champion> visitedChampions = new();
+        HashSet<CombatUnit> visitedUnits = new();
         foreach (RaycastHit hit in hits)
         {
             Champion targetChampion = hit.collider.GetComponentInParent<Champion>();
-            if (targetChampion != null && targetChampion != champion && targetChampion.Team != champion.Team)
+            if (targetChampion != null && targetChampion != champion && targetChampion.Team != champion.Team && visitedChampions.Add(targetChampion))
             {
+                ReportChampionHit(targetChampion);
                 targetChampion.TakeDamage(damage, DamageType.Magical);
                 return;
             }
 
             CombatUnit targetUnit = hit.collider.GetComponentInParent<CombatUnit>();
-            if (targetUnit != null && targetUnit.UnitTeam != champion.Team)
+            if (targetUnit != null && targetUnit.UnitTeam != champion.Team && visitedUnits.Add(targetUnit))
             {
                 targetUnit.TakeDamage(damage);
                 return;
             }
         }
+    }
+
+    private void ReportChampionHit(Champion targetChampion)
+    {
+        if (champion != null && targetChampion != null)
+            AOGMatchEventBridgeRuntime.Report(champion, targetChampion);
     }
 
     public float GetCooldownRemaining()
@@ -248,7 +260,6 @@ public class ChampionAbility : MonoBehaviour
     {
         if (cooldownSeconds <= 0f)
             return 1f;
-
         return 1f - Mathf.Clamp01(GetCooldownRemaining() / cooldownSeconds);
     }
 }

@@ -13,9 +13,9 @@ public class AOGHeroPerformanceProfile
     public float ObjectiveParticipation;
 
     public float WinRate => Games <= 0 ? 0.5f : Wins / (float)Games;
-    public float ThreatScore => Games < 5
-        ? 0f
-        : WinRate * 55f + Mathf.Clamp(AverageKDA / 5f, 0f, 1f) * 25f + Mathf.Clamp01(ObjectiveParticipation) * 20f;
+    public float SelectionPriorityScore => Games < 3
+        ? WinRate * 40f
+        : WinRate * 70f + Mathf.Clamp(AverageKDA / 5f, 0f, 1f) * 20f + Mathf.Clamp01(ObjectiveParticipation) * 10f;
 }
 
 [Serializable]
@@ -26,8 +26,9 @@ public class AOGPlayerHeroMasteryProfile
 }
 
 /// <summary>
-/// Stores hero-specific performance and generates opponent-aware ban recommendations.
-/// Recommendations are advisory only; final bans remain explicit draft actions.
+/// Stores hero-specific performance and exposes selection-priority scoring.
+/// Hero ownership is global/open; when multiple players claim the same hero in one match,
+/// the player with the stronger proven hero performance receives priority.
 /// </summary>
 public class AOGHeroMasteryRuntime : MonoBehaviour
 {
@@ -72,25 +73,19 @@ public class AOGHeroMasteryRuntime : MonoBehaviour
         hero.ObjectiveParticipation = ((hero.ObjectiveParticipation * previousGames) + Mathf.Clamp01(objectiveParticipation)) / hero.Games;
     }
 
-    public IReadOnlyList<string> RecommendBans(IEnumerable<string> enemyPlayerIds, int count = 3)
+    public float GetSelectionPriorityScore(string playerId, string heroId)
     {
-        Dictionary<string, float> threatByHero = new();
+        if (string.IsNullOrWhiteSpace(playerId) || string.IsNullOrWhiteSpace(heroId)) return 0f;
+        if (!profiles.TryGetValue(playerId, out AOGPlayerHeroMasteryProfile profile)) return 0f;
+        AOGHeroPerformanceProfile hero = profile.Heroes.Find(h => h.HeroId == heroId);
+        return hero != null ? hero.SelectionPriorityScore : 0f;
+    }
 
-        foreach (string playerId in enemyPlayerIds)
-        {
-            if (!profiles.TryGetValue(playerId, out AOGPlayerHeroMasteryProfile profile)) continue;
-            foreach (AOGHeroPerformanceProfile hero in profile.Heroes)
-            {
-                if (!threatByHero.ContainsKey(hero.HeroId)) threatByHero[hero.HeroId] = 0f;
-                threatByHero[hero.HeroId] += hero.ThreatScore;
-            }
-        }
-
-        return threatByHero
-            .OrderByDescending(pair => pair.Value)
-            .ThenBy(pair => pair.Key)
-            .Take(Mathf.Max(0, count))
-            .Select(pair => pair.Key)
-            .ToList();
+    public float GetHeroWinRate(string playerId, string heroId)
+    {
+        if (string.IsNullOrWhiteSpace(playerId) || string.IsNullOrWhiteSpace(heroId)) return 0.5f;
+        if (!profiles.TryGetValue(playerId, out AOGPlayerHeroMasteryProfile profile)) return 0.5f;
+        AOGHeroPerformanceProfile hero = profile.Heroes.Find(h => h.HeroId == heroId);
+        return hero != null ? hero.WinRate : 0.5f;
     }
 }

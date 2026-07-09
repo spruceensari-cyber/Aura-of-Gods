@@ -1,6 +1,9 @@
 using UnityEngine;
 using UnityEngine.UI;
 
+/// <summary>
+/// Ranked profile/lobby card. It automatically hides during an active match scene.
+/// </summary>
 public class AOGRankedFrontEndHUDRuntime : MonoBehaviour
 {
     private CanvasGroup group;
@@ -25,6 +28,10 @@ public class AOGRankedFrontEndHUDRuntime : MonoBehaviour
 
     void Update()
     {
+        bool inMatch = FindObjectOfType<ChampionController>() != null || FindObjectOfType<MinionSpawner>() != null;
+        SetVisible(!inMatch);
+        if (inMatch) return;
+
         AOGRankProfile rank = AOGRankedProgressionRuntime.Instance?.GetOrCreate(localPlayerId);
         AOGIntegrityProfile integrity = AOGPlayerIntegrityRuntime.Instance?.GetOrCreate(localPlayerId);
         if (rank != null)
@@ -42,6 +49,14 @@ public class AOGRankedFrontEndHUDRuntime : MonoBehaviour
                 ? $"QUEUE LOCK  {Mathf.CeilToInt(integrity.QueueLockMinutes)} MIN"
                 : $"INTEGRITY  {Mathf.Max(0f, 100f - integrity.PenaltyScore * 10f):0}";
         }
+    }
+
+    void SetVisible(bool visible)
+    {
+        if (group == null) return;
+        group.alpha = visible ? 1f : 0f;
+        group.interactable = visible;
+        group.blocksRaycasts = visible;
     }
 
     void BuildUI()

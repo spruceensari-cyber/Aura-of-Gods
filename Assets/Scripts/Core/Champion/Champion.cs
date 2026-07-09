@@ -9,10 +9,6 @@ public enum DamageType
     True
 }
 
-/// <summary>
-/// Base champion class with stats, progression, resources and combat state.
-/// Exposes read-only runtime values so HUD, bots and networking can bind without placeholders.
-/// </summary>
 public class Champion : MonoBehaviour
 {
     [Header("Core Stats")]
@@ -88,8 +84,14 @@ public class Champion : MonoBehaviour
     public event System.Action OnResourcesChanged;
     public event System.Action OnProgressionChanged;
 
+    void Awake()
+    {
+        SanitizeSerializedStats();
+    }
+
     void Start()
     {
+        SanitizeSerializedStats();
         currentHealth = baseHealth;
         currentMana = baseMana;
         RecalculateStats();
@@ -97,53 +99,62 @@ public class Champion : MonoBehaviour
         OnProgressionChanged?.Invoke();
     }
 
+    private void SanitizeSerializedStats()
+    {
+        if (baseHealth <= 0f) baseHealth = 500f;
+        if (baseMana <= 0f) baseMana = 300f;
+        if (baseAttackDamage <= 0f) baseAttackDamage = 60f;
+        if (baseArmor <= 0f) baseArmor = 25f;
+        if (baseSpellBlock <= 0f) baseSpellBlock = 25f;
+        if (baseMovementSpeed <= 0f) baseMovementSpeed = 5f;
+        if (baseAttackSpeed <= 0f) baseAttackSpeed = 1f;
+        if (maxLevel <= 0) maxLevel = 18;
+        if (baseExperiencePerLevel <= 0) baseExperiencePerLevel = 100;
+        if (healthRegenPerSec < 0f) healthRegenPerSec = 0.5f;
+        if (manaRegenPerSec < 0f) manaRegenPerSec = 1f;
+    }
+
     void Update()
     {
-        if (!isAlive)
-            return;
-
+        if (!isAlive) return;
         RegenerateHealth();
         RegenerateMana();
     }
 
     public void TakeDamage(float damage, DamageType type)
     {
-        if (!isAlive || damage <= 0f)
-            return;
-
+        if (!isAlive || damage <= 0f) return;
         float mitigatedDamage = CalculateMitigatedDamage(damage, type);
         currentHealth = Mathf.Max(0f, currentHealth - mitigatedDamage);
         OnDamaged?.Invoke(mitigatedDamage, type);
         NotifyResourcesChanged();
-
-        if (currentHealth <= 0f)
-            Die();
+        if (currentHealth <= 0f) Die();
     }
 
     public void Heal(float amount)
     {
-        if (!isAlive || amount <= 0f)
-            return;
-
+        if (!isAlive || amount <= 0f) return;
         float previous = currentHealth;
         currentHealth = Mathf.Min(baseHealth, currentHealth + amount);
-        if (!Mathf.Approximately(previous, currentHealth))
-            NotifyResourcesChanged();
+        if (!Mathf.Approximately(previous, currentHealth)) NotifyResourcesChanged();
     }
 
     public bool SpendMana(float amount)
     {
-        if (amount < 0f || currentMana < amount)
-            return false;
-
+        if (amount < 0f || currentMana < amount) return false;
         currentMana -= amount;
         NotifyResourcesChanged();
         return true;
     }
 
-    public bool HasMana(float amount)
+    public bool HasMana(float amount) => currentMana >= amount;
+
+    public void RestoreMana(float amount)
     {
-        return currentMana >= amount;
+        if (!isAlive || amount <= 0f) return;
+        float previous = currentMana;
+        currentMana = Mathf.Min(baseMana, currentMana + amount);
+        if (!Mathf.Approximately(previous, currentMana)) NotifyResourcesChanged();
     }
 
     private float CalculateMitigatedDamage(float damage, DamageType type)
@@ -159,33 +170,24 @@ public class Champion : MonoBehaviour
 
     private void RegenerateHealth()
     {
-        if (currentHealth >= baseHealth || healthRegenPerSec <= 0f)
-            return;
-
+        if (currentHealth >= baseHealth || healthRegenPerSec <= 0f) return;
         float previous = currentHealth;
         currentHealth = Mathf.Min(baseHealth, currentHealth + healthRegenPerSec * Time.deltaTime);
-        if ((int)previous != (int)currentHealth)
-            NotifyResourcesChanged();
+        if ((int)previous != (int)currentHealth) NotifyResourcesChanged();
     }
 
     private void RegenerateMana()
     {
-        if (currentMana >= baseMana || manaRegenPerSec <= 0f)
-            return;
-
+        if (currentMana >= baseMana || manaRegenPerSec <= 0f) return;
         float previous = currentMana;
         currentMana = Mathf.Min(baseMana, currentMana + manaRegenPerSec * Time.deltaTime);
-        if ((int)previous != (int)currentMana)
-            NotifyResourcesChanged();
+        if ((int)previous != (int)currentMana) NotifyResourcesChanged();
     }
 
     public void GainExperience(int xp)
     {
-        if (xp <= 0 || level >= maxLevel)
-            return;
-
+        if (xp <= 0 || level >= maxLevel) return;
         experience += xp;
-
         while (level < maxLevel && experience >= ExperienceToNextLevel)
         {
             experience -= ExperienceToNextLevel;
@@ -193,27 +195,20 @@ public class Champion : MonoBehaviour
             IncreaseStats();
             OnLevelUp?.Invoke();
         }
-
-        if (level >= maxLevel)
-            experience = 0;
-
+        if (level >= maxLevel) experience = 0;
         OnProgressionChanged?.Invoke();
     }
 
     public void GainGold(int amount)
     {
-        if (amount <= 0)
-            return;
-
+        if (amount <= 0) return;
         gold += amount;
         OnProgressionChanged?.Invoke();
     }
 
     public bool SpendGold(int amount)
     {
-        if (amount < 0 || gold < amount)
-            return false;
-
+        if (amount < 0 || gold < amount) return false;
         gold -= amount;
         OnProgressionChanged?.Invoke();
         return true;
@@ -223,12 +218,10 @@ public class Champion : MonoBehaviour
     {
         float oldHealthPercent = HealthPercent;
         float oldManaPercent = ManaPercent;
-
         baseHealth *= 1.08f;
         baseMana *= 1.06f;
         baseAttackDamage *= 1.04f;
         baseAbilityPower *= 1.04f;
-
         RecalculateStats();
         currentHealth = baseHealth * Mathf.Clamp01(oldHealthPercent + 0.15f);
         currentMana = baseMana * Mathf.Clamp01(oldManaPercent + 0.15f);
@@ -260,27 +253,21 @@ public class Champion : MonoBehaviour
 
     public void AddStatModifier(StatModifier modifier)
     {
-        if (modifier == null)
-            return;
-
+        if (modifier == null) return;
         activeModifiers.Add(modifier);
         RecalculateStats();
     }
 
     public void RemoveStatModifier(StatModifier modifier)
     {
-        if (modifier == null)
-            return;
-
+        if (modifier == null) return;
         activeModifiers.Remove(modifier);
         RecalculateStats();
     }
 
     public void Stun(float duration)
     {
-        if (!isAlive)
-            return;
-
+        if (!isAlive) return;
         StopCoroutine(nameof(StunRoutine));
         StartCoroutine(StunRoutine(duration));
     }
@@ -308,10 +295,7 @@ public class Champion : MonoBehaviour
         NotifyResourcesChanged();
     }
 
-    private void NotifyResourcesChanged()
-    {
-        OnResourcesChanged?.Invoke();
-    }
+    private void NotifyResourcesChanged() => OnResourcesChanged?.Invoke();
 }
 
 public class StatModifier

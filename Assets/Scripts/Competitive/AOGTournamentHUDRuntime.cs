@@ -2,47 +2,50 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Broadcast-friendly competitive overlay for match phase, series score and objective state.
-/// Designed as a runtime fallback until a production spectator UI prefab replaces it.
+/// Broadcast overlay. Hidden for normal players and only visible while spectator mode is active.
 /// </summary>
 public class AOGTournamentHUDRuntime : MonoBehaviour
 {
+    private Canvas canvas;
     private Text phaseText;
     private Text timerText;
     private Text seriesText;
     private Text objectiveText;
     private ObjectiveManager objectives;
-    private GameStateManager gameState;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
     {
-        if (FindObjectOfType<AOGTournamentHUDRuntime>() != null)
-            return;
-
-        GameObject root = new GameObject("AOG_Tournament_HUD_Runtime");
-        root.AddComponent<AOGTournamentHUDRuntime>();
+        if (FindObjectOfType<AOGTournamentHUDRuntime>() != null) return;
+        new GameObject("AOG_Tournament_HUD_Runtime").AddComponent<AOGTournamentHUDRuntime>();
     }
 
     void Awake()
     {
         DontDestroyOnLoad(gameObject);
         BuildOverlay();
+        SetVisible(false);
     }
 
     void Update()
     {
-        if (objectives == null)
-            objectives = FindObjectOfType<ObjectiveManager>();
-        if (gameState == null)
-            gameState = FindObjectOfType<GameStateManager>();
+        AOGSpectatorCameraRuntime spectator = FindObjectOfType<AOGSpectatorCameraRuntime>();
+        bool visible = spectator != null && spectator.SpectatorMode;
+        SetVisible(visible);
+        if (!visible) return;
 
+        if (objectives == null) objectives = FindObjectOfType<ObjectiveManager>();
         Refresh();
+    }
+
+    private void SetVisible(bool visible)
+    {
+        if (canvas != null) canvas.enabled = visible;
     }
 
     private void BuildOverlay()
     {
-        Canvas canvas = gameObject.AddComponent<Canvas>();
+        canvas = gameObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 400;
 
@@ -65,7 +68,6 @@ public class AOGTournamentHUDRuntime : MonoBehaviour
         if (match != null)
         {
             phaseText.text = match.Phase.ToString().ToUpperInvariant();
-
             float time = match.Phase == AOGMatchPhase.Warmup || match.Phase == AOGMatchPhase.Countdown
                 ? match.PhaseRemaining
                 : match.MatchTime;
@@ -98,7 +100,9 @@ public class AOGTournamentHUDRuntime : MonoBehaviour
         rect.pivot = anchor;
         rect.sizeDelta = size;
         rect.anchoredPosition = position;
-        obj.GetComponent<Image>().color = new Color(0.02f, 0.03f, 0.055f, 0.93f);
+        Image image = obj.GetComponent<Image>();
+        image.color = new Color(0.02f, 0.03f, 0.055f, 0.93f);
+        image.raycastTarget = false;
         return obj;
     }
 

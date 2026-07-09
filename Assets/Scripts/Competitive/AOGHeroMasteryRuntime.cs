@@ -13,9 +13,24 @@ public class AOGHeroPerformanceProfile
     public float ObjectiveParticipation;
 
     public float WinRate => Games <= 0 ? 0.5f : Wins / (float)Games;
-    public float SelectionPriorityScore => Games < 3
-        ? WinRate * 40f
-        : WinRate * 70f + Mathf.Clamp(AverageKDA / 5f, 0f, 1f) * 20f + Mathf.Clamp01(ObjectiveParticipation) * 10f;
+    public float SampleConfidence => Mathf.Clamp01(Games / 20f);
+
+    /// <summary>
+    /// Hero-claim priority score.
+    /// Win rate is intentionally dominant, while KDA, objective participation and sample confidence
+    /// prevent tiny-sample or purely stat-padding profiles from unfairly winning hero claims.
+    /// </summary>
+    public float SelectionPriorityScore
+    {
+        get
+        {
+            float winRateScore = Mathf.Clamp01(WinRate) * 65f;
+            float kdaScore = Mathf.Clamp01(AverageKDA / 6f) * 20f;
+            float objectiveScore = Mathf.Clamp01(ObjectiveParticipation) * 10f;
+            float confidenceScore = SampleConfidence * 5f;
+            return winRateScore + kdaScore + objectiveScore + confidenceScore;
+        }
+    }
 }
 
 [Serializable]

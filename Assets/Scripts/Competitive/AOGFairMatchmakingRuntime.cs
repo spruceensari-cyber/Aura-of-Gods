@@ -161,24 +161,52 @@ public class AOGFairMatchmakingRuntime : MonoBehaviour
         return penalty;
     }
 
+    public void ApplyTeamResult(AOGMatchCandidate match, TeamType winner)
+    {
+        if (match == null || match.Blue.Count == 0 || match.Red.Count == 0) return;
+
+        float blueAverage = match.Blue.Average(p => p.Elo);
+        float redAverage = match.Red.Average(p => p.Elo);
+        float blueExpected = 1f / (1f + Mathf.Pow(10f, (redAverage - blueAverage) / 400f));
+        float redExpected = 1f - blueExpected;
+        float blueScore = winner == TeamType.Blue ? 1f : 0f;
+        float redScore = 1f - blueScore;
+
+        foreach (AOGPlayerRatingProfile player in match.Blue)
+            ApplySingleResult(player, blueScore, blueExpected);
+        foreach (AOGPlayerRatingProfile player in match.Red)
+            ApplySingleResult(player, redScore, redExpected);
+    }
+
     public void ApplyRankedResult(AOGPlayerRatingProfile winner, AOGPlayerRatingProfile loser)
     {
         if (winner == null || loser == null) return;
-
         float expectedWinner = 1f / (1f + Mathf.Pow(10f, (loser.Elo - winner.Elo) / 400f));
         float expectedLoser = 1f - expectedWinner;
-        winner.Elo += Mathf.RoundToInt(eloKFactor * (1f - expectedWinner));
-        loser.Elo += Mathf.RoundToInt(eloKFactor * (0f - expectedLoser));
+        ApplySingleResult(winner, 1f, expectedWinner);
+        ApplySingleResult(loser, 0f, expectedLoser);
+    }
 
-        winner.Wins++;
-        winner.CurrentWinStreak++;
-        winner.CurrentLossStreak = 0;
-        loser.Losses++;
-        loser.CurrentLossStreak++;
-        loser.CurrentWinStreak = 0;
+    private void ApplySingleResult(AOGPlayerRatingProfile player, float score, float expected)
+    {
+        player.Elo += Mathf.RoundToInt(eloKFactor * (score - expected));
 
-        winner.RatingDeviation = Mathf.Max(45f, winner.RatingDeviation * 0.985f);
-        loser.RatingDeviation = Mathf.Max(45f, loser.RatingDeviation * 0.985f);
+        if (score > 0.5f)
+        {
+            player.Wins++;
+            player.CurrentWinStreak++;
+            player.CurrentLossStreak = 0;
+        }
+        else
+        {
+            player.Losses++;
+            player.CurrentLossStreak++;
+            player.CurrentWinStreak = 0;
+        }
+
+        player.RatingDeviation = Mathf.Max(45f, player.RatingDeviation * 0.985f);
+        // Win/loss streaks are tracked for profile display only. They never change matchmaking or Elo gain/loss.
+        // There is intentionally no 10-win reset and no hidden forced-loss queue.
     }
 
     private static int CountBits(int value)

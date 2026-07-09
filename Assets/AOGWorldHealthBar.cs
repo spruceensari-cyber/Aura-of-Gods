@@ -1,11 +1,12 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public class AOGWorldHealthBar : MonoBehaviour
 {
     [Header("Bar Settings")]
     public Vector3 barOffset = new Vector3(0f, 3f, 0f);
     public float barWidth = 2f;
-    public float barHeight = 0.18f;
+    public float barHeight = 0.16f;
 
     [Header("Compatibility With Old Scripts")]
     public Transform target;
@@ -14,14 +15,17 @@ public class AOGWorldHealthBar : MonoBehaviour
 
     private Transform barRootTransform;
     private Transform fillTransform;
+    private Transform damageGhostTransform;
 
     private Minion minionTarget;
     private TowerHealth towerTarget;
     private AOGCharacterStats heroTarget;
 
-    private bool isHidden = false;
+    private bool isHidden;
+    private float displayedRatio = 1f;
+    private float ghostRatio = 1f;
 
-    void Start()
+    private void Start()
     {
         if (target == null)
             target = transform;
@@ -36,29 +40,43 @@ public class AOGWorldHealthBar : MonoBehaviour
         towerTarget = GetComponent<TowerHealth>();
         heroTarget = GetComponent<AOGCharacterStats>();
 
-        BuildHealthBar();
-    }
-
-    void LateUpdate()
-    {
-        if (barRootTransform == null || fillTransform == null)
-            return;
-
-        if (isHidden)
-            return;
-
-        float ratio = GetHealthRatio();
-
-        fillTransform.localScale = new Vector3(ratio, 1f, 1f);
-        fillTransform.localPosition = new Vector3(-(1f - ratio) * 0.5f, 0f, -0.01f);
-
-        if (Camera.main != null)
+        if (heroTarget != null)
         {
-            barRootTransform.rotation = Camera.main.transform.rotation;
+            barWidth = Mathf.Max(barWidth, 2.45f);
+            barHeight = Mathf.Max(barHeight, 0.20f);
+            barOffset.y = Mathf.Max(barOffset.y, 3.1f);
         }
+
+        BuildHealthBar();
+        displayedRatio = ghostRatio = GetHealthRatio();
     }
 
-    void BuildHealthBar()
+    private void LateUpdate()
+    {
+        if (barRootTransform == null || fillTransform == null || isHidden)
+            return;
+
+        float targetRatio = GetHealthRatio();
+        displayedRatio = Mathf.MoveTowards(displayedRatio, targetRatio, Time.deltaTime * 3.8f);
+        ghostRatio = Mathf.MoveTowards(ghostRatio, targetRatio, Time.deltaTime * 0.65f);
+
+        ApplyRatio(fillTransform, displayedRatio, -0.018f);
+        if (damageGhostTransform != null)
+            ApplyRatio(damageGhostTransform, ghostRatio, -0.010f);
+
+        Camera camera = Camera.main;
+        if (camera != null)
+            barRootTransform.rotation = camera.transform.rotation;
+    }
+
+    private static void ApplyRatio(Transform bar, float ratio, float z)
+    {
+        ratio = Mathf.Clamp01(ratio);
+        bar.localScale = new Vector3(ratio, bar.localScale.y, bar.localScale.z);
+        bar.localPosition = new Vector3(-(1f - ratio) * 0.5f, 0f, z);
+    }
+
+    private void BuildHealthBar()
     {
         if (barRootTransform != null)
             return;
@@ -68,40 +86,65 @@ public class AOGWorldHealthBar : MonoBehaviour
         rootObj.transform.localPosition = barOffset;
         rootObj.transform.localRotation = Quaternion.identity;
         rootObj.transform.localScale = Vector3.one;
-
         barRootTransform = rootObj.transform;
 
-        GameObject bgObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        bgObj.name = "HP_BG";
-        bgObj.transform.SetParent(barRootTransform);
-        bgObj.transform.localPosition = Vector3.zero;
-        bgObj.transform.localRotation = Quaternion.identity;
-        bgObj.transform.localScale = new Vector3(barWidth, barHeight, 0.05f);
+        GameObject border = CreateBarCube("HP_BORDER", barRootTransform, new Vector3(barWidth + 0.16f, barHeight + 0.13f, 0.055f), new Color(0.02f, 0.025f, 0.035f, 1f), 0f);
+        GameObject bg = CreateBarCube("HP_BG", border.transform, new Vector3(0.94f, 0.56f, 0.8f), new Color(0.055f, 0.07f, 0.075f, 1f), -0.006f);
 
-        Renderer bgRenderer = bgObj.GetComponent<Renderer>();
-        if (bgRenderer != null)
-            bgRenderer.material.color = Color.black;
+        GameObject ghost = CreateBarCube("HP_DAMAGE_GHOST", bg.transform, new Vector3(1f, 0.78f, 0.75f), new Color(0.92f, 0.72f, 0.19f, 1f), -0.010f);
+        damageGhostTransform = ghost.transform;
 
-        Collider bgCollider = bgObj.GetComponent<Collider>();
-        if (bgCollider != null)
-            Destroy(bgCollider);
+        GameObject fill = CreateBarCube("HP_FILL", bg.transform, new Vector3(1f, 0.78f, 0.68f), GetTeamColor(), -0.018f);
+        fillTransform = fill.transform;
 
-        GameObject fillObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        fillObj.name = "HP_FILL";
-        fillObj.transform.SetParent(bgObj.transform);
-        fillObj.transform.localPosition = new Vector3(0f, 0f, -0.01f);
-        fillObj.transform.localRotation = Quaternion.identity;
-        fillObj.transform.localScale = new Vector3(1f, 0.8f, 1f);
+        CreateSegments(border.transform);
+    }
 
-        Renderer fillRenderer = fillObj.GetComponent<Renderer>();
-        if (fillRenderer != null)
-            fillRenderer.material.color = GetTeamColor();
+    private GameObject CreateBarCube(string name, Transform parent, Vector3 scale, Color color, float z)
+    {
+        GameObject obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        obj.name = name;
+        obj.transform.SetParent(parent);
+        obj.transform.localPosition = new Vector3(0f, 0f, z);
+        obj.transform.localRotation = Quaternion.identity;
+        obj.transform.localScale = scale;
 
-        Collider fillCollider = fillObj.GetComponent<Collider>();
-        if (fillCollider != null)
-            Destroy(fillCollider);
+        Renderer renderer = obj.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.sharedMaterial = CreateUnlitMaterial(name + "_MAT", color);
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
 
-        fillTransform = fillObj.transform;
+        Collider col = obj.GetComponent<Collider>();
+        if (col != null)
+            Destroy(col);
+
+        return obj;
+    }
+
+    private void CreateSegments(Transform parent)
+    {
+        int segmentCount = heroTarget != null ? 10 : 5;
+        for (int i = 1; i < segmentCount; i++)
+        {
+            float x = Mathf.Lerp(-barWidth * 0.45f, barWidth * 0.45f, i / (float)segmentCount);
+            GameObject segment = CreateBarCube("HP_SEGMENT_" + i, parent, new Vector3(0.018f, barHeight * 0.58f, 0.035f), new Color(0f, 0f, 0f, 0.55f), -0.028f);
+            segment.transform.localPosition = new Vector3(x, 0f, -0.028f);
+        }
+    }
+
+    private static Material CreateUnlitMaterial(string name, Color color)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Unlit/Color");
+
+        Material material = new Material(shader) { name = name, color = color };
+        if (material.HasProperty("_BaseColor"))
+            material.SetColor("_BaseColor", color);
+        return material;
     }
 
     public void Refresh()
@@ -110,7 +153,6 @@ public class AOGWorldHealthBar : MonoBehaviour
             BuildHealthBar();
 
         isHidden = false;
-
         if (barRootTransform != null)
             barRootTransform.gameObject.SetActive(true);
     }
@@ -118,36 +160,35 @@ public class AOGWorldHealthBar : MonoBehaviour
     public void Hide()
     {
         isHidden = true;
-
         if (barRootTransform != null)
             barRootTransform.gameObject.SetActive(false);
     }
 
-    float GetHealthRatio()
+    private float GetHealthRatio()
     {
         if (minionTarget != null)
-            return Mathf.Clamp01(minionTarget.hp / minionTarget.maxHp);
+            return Mathf.Clamp01(minionTarget.hp / Mathf.Max(1f, minionTarget.maxHp));
 
         if (towerTarget != null)
-            return Mathf.Clamp01(towerTarget.hp / towerTarget.maxHp);
+            return Mathf.Clamp01(towerTarget.hp / Mathf.Max(1f, towerTarget.maxHp));
 
         if (heroTarget != null)
-            return Mathf.Clamp01(heroTarget.hp / heroTarget.maxHp);
+            return Mathf.Clamp01(heroTarget.hp / Mathf.Max(1f, heroTarget.maxHp));
 
         return 1f;
     }
 
-    Color GetTeamColor()
+    private Color GetTeamColor()
     {
+        if (heroTarget != null)
+            return heroTarget.team == MinionTeam.Blue ? new Color(0.17f, 0.88f, 0.38f, 1f) : new Color(0.96f, 0.20f, 0.22f, 1f);
+
         if (minionTarget != null)
-            return minionTarget.team == MinionTeam.Blue ? Color.cyan : Color.red;
+            return minionTarget.team == MinionTeam.Blue ? new Color(0.16f, 0.62f, 1f, 1f) : new Color(0.96f, 0.22f, 0.25f, 1f);
 
         if (towerTarget != null)
-            return towerTarget.towerTeam == MinionTeam.Blue ? Color.cyan : Color.red;
+            return towerTarget.towerTeam == MinionTeam.Blue ? new Color(0.16f, 0.62f, 1f, 1f) : new Color(0.96f, 0.22f, 0.25f, 1f);
 
-        if (heroTarget != null)
-            return heroTarget.team == MinionTeam.Blue ? Color.cyan : Color.red;
-
-        return Color.magenta;
+        return new Color(0.72f, 0.32f, 1f, 1f);
     }
 }

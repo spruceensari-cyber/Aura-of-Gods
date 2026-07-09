@@ -37,7 +37,7 @@ public class ChampionController : MonoBehaviour
         HandleAttacks();
 
         if (presentation != null && rb != null)
-            presentation.SetPlanarVelocity(rb.velocity);
+            presentation.SetPlanarVelocity(rb.linearVelocity);
     }
 
     private void HandleMovement()
@@ -57,7 +57,7 @@ public class ChampionController : MonoBehaviour
 
         if (!isMoving)
         {
-            rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+            rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
             return;
         }
 
@@ -67,14 +67,14 @@ public class ChampionController : MonoBehaviour
         if (direction.magnitude <= stoppingDistance)
         {
             isMoving = false;
-            rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+            rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
             return;
         }
 
         direction.Normalize();
         Quaternion targetRot = Quaternion.LookRotation(direction);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * turnSpeed);
-        rb.velocity = new Vector3(direction.x * 5f, rb.velocity.y, direction.z * 5f);
+        rb.linearVelocity = new Vector3(direction.x * 5f, rb.linearVelocity.y, direction.z * 5f);
     }
 
     private void HandleAbilities()

@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6426c4d633354c2aab0ca226d01ca90e, type: 3}
+  m_Name: Vorcalis_Presentation
+  m_EditorClassIdentifier: Assembly-CSharp::ChampionPresentationProfile
+  championId: vorcalis
+  displayName: Vorcalis
+  archetype: 2
+  animatorController: {fileID: 9100000, guid: 5f4fe47afb82e7e42b4217477cbbdd87, type: 2}
+  locomotionDamp: 0.08
+  basicAttackWindup: 0.34
+  basicAttackRecovery: 0.28
+  basicAttackVariants: 3
+  speedParameter: Speed
+  moveXParameter: MoveX
+  moveYParameter: MoveY
+  attackIndexParameter: AttackIndex
+  attackTrigger: Attack
+  qTrigger: SkillQ
+  wTrigger: SkillW
+  eTrigger: SkillE
+  rTrigger: SkillR
+  hitTrigger: Hit
+  deathTrigger: Death
+  recallTrigger: Recall
+  basicImpactVfx: {fileID: 0}
+  empoweredImpactVfx: {fileID: 0}
+  abilityImpactVfx: {fileID: 0}
+  ultimateImpactVfx: {fileID: 0}

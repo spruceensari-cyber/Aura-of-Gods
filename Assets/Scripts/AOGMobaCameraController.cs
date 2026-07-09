@@ -17,13 +17,13 @@ public class AOGMobaCameraController : MonoBehaviour
     public float defaultZoom = 19f;
     public float minZoom = 13f;
     public float maxZoom = 27f;
-    public float cameraHeightFactor = 0.90f;
-    public float cameraBackFactor = 1.15f;
+    public float forwardFramingBias = 1.6f;
 
     [Header("Follow")]
     public float followSmoothTime = 0.10f;
     public float rotationSmoothSpeed = 14f;
-    public float targetLookAhead = 1.2f;
+    public float targetLookAhead = 0.16f;
+    public float maxLookAheadDistance = 2.2f;
 
     [Header("Free Pan")]
     public bool edgePanEnabled = true;
@@ -95,18 +95,16 @@ public class AOGMobaCameraController : MonoBehaviour
 
         currentZoom = Mathf.SmoothDamp(currentZoom, desiredZoom, ref zoomVelocity, zoomSmoothTime);
 
-        Vector3 focusPosition = target.position + targetPlanarVelocity * targetLookAhead + panOffset;
         Quaternion desiredRotation = Quaternion.Euler(pitch, yaw, 0f);
+        Vector3 planarForward = desiredRotation * Vector3.forward;
+        planarForward.y = 0f;
+        if (planarForward.sqrMagnitude < 0.001f)
+            planarForward = Vector3.forward;
+        planarForward.Normalize();
 
-        Vector3 flatBackward = desiredRotation * Vector3.back;
-        flatBackward.y = 0f;
-        if (flatBackward.sqrMagnitude < 0.001f)
-            flatBackward = Vector3.back;
-        flatBackward.Normalize();
-
-        Vector3 desiredPosition = focusPosition
-                                  + Vector3.up * currentZoom * cameraHeightFactor
-                                  + flatBackward * currentZoom * cameraBackFactor;
+        Vector3 lookAhead = Vector3.ClampMagnitude(targetPlanarVelocity * targetLookAhead, maxLookAheadDistance);
+        Vector3 focusPosition = target.position + lookAhead + planarForward * forwardFramingBias + panOffset;
+        Vector3 desiredPosition = focusPosition + desiredRotation * Vector3.back * currentZoom;
 
         impulseOffset = Vector3.Lerp(impulseOffset, Vector3.zero, impulseDecay * Time.deltaTime);
         desiredPosition += impulseOffset;
@@ -132,6 +130,7 @@ public class AOGMobaCameraController : MonoBehaviour
         if (target != null)
         {
             targetLastPosition = target.position;
+            targetPlanarVelocity = Vector3.zero;
             if (snap)
                 SnapToTarget();
         }
@@ -200,7 +199,8 @@ public class AOGMobaCameraController : MonoBehaviour
 
             Vector3 right = PlanarRight();
             Vector3 forward = PlanarForward();
-            panDelta += (-right * mouseDelta.x - forward * mouseDelta.y) * middleDragSpeed * Mathf.Lerp(0.8f, 1.35f, Mathf.InverseLerp(minZoom, maxZoom, currentZoom));
+            float zoomMultiplier = Mathf.Lerp(0.8f, 1.35f, Mathf.InverseLerp(minZoom, maxZoom, currentZoom));
+            panDelta += (-right * mouseDelta.x - forward * mouseDelta.y) * middleDragSpeed * zoomMultiplier;
         }
         else if (edgePanEnabled && !pointerOverUi && Application.isFocused)
         {

@@ -5,6 +5,8 @@ public class TowerAttack : MonoBehaviour
     public float attackRange = 22f;
     public float attackDamage = 30f;
     public float attackRate = 1.2f;
+    public float championDamageRamp = 0.22f;
+    public int maxChampionRampStacks = 4;
 
     [Header("Projectile Visual")]
     public float projectileSize = 0.35f;
@@ -13,11 +15,13 @@ public class TowerAttack : MonoBehaviour
 
     private TowerHealth towerHealth;
     private float nextAttackTime;
+    private Minion lockedMinion;
+    private Champion lockedChampion;
+    private int championRampStacks;
 
     void Start()
     {
         towerHealth = GetComponent<TowerHealth>();
-
         if (towerHealth == null)
         {
             towerHealth = gameObject.AddComponent<TowerHealth>();
@@ -29,122 +33,144 @@ public class TowerAttack : MonoBehaviour
     {
         if (towerHealth == null)
             towerHealth = GetComponent<TowerHealth>();
-
-        if (towerHealth == null)
+        if (towerHealth == null || towerHealth.hp <= 0f || Time.time < nextAttackTime)
             return;
 
-        if (towerHealth.hp <= 0f)
+        ValidateLocks();
+
+        if (lockedMinion == null)
+            lockedMinion = FindClosestEnemyMinion();
+
+        if (lockedMinion != null)
+        {
+            championRampStacks = 0;
+            nextAttackTime = Time.time + attackRate;
+            ShootProjectile(lockedMinion, null, attackDamage);
             return;
+        }
 
-        if (Time.time < nextAttackTime)
-            return;
+        if (lockedChampion == null)
+            lockedChampion = FindClosestEnemyChampion();
 
-        Minion target = FindClosestEnemyMinion();
-
-        if (target == null)
-            return;
-
-        nextAttackTime = Time.time + attackRate;
-
-        ShootProjectile(target);
-
-        Debug.Log(name + " küçük kule mermisi attı -> " + target.name);
+        if (lockedChampion != null)
+        {
+            championRampStacks = Mathf.Min(championRampStacks + 1, maxChampionRampStacks);
+            float rampedDamage = attackDamage * (1f + championDamageRamp * (championRampStacks - 1));
+            nextAttackTime = Time.time + attackRate;
+            ShootProjectile(null, lockedChampion, rampedDamage);
+        }
     }
 
     void AutoAssignTeam()
     {
         string n = gameObject.name.ToLower();
+        if (n.StartsWith("blue_")) towerHealth.towerTeam = MinionTeam.Blue;
+        else if (n.StartsWith("red_")) towerHealth.towerTeam = MinionTeam.Red;
+    }
 
-        if (n.StartsWith("blue_"))
-            towerHealth.towerTeam = MinionTeam.Blue;
-        else if (n.StartsWith("red_"))
-            towerHealth.towerTeam = MinionTeam.Red;
+    void ValidateLocks()
+    {
+        if (lockedMinion != null)
+        {
+            if (!lockedMinion.gameObject.activeInHierarchy || lockedMinion.hp <= 0f || lockedMinion.team == towerHealth.towerTeam || FlatDistance(transform.position, lockedMinion.transform.position) > attackRange)
+                lockedMinion = null;
+        }
+
+        if (lockedChampion != null)
+        {
+            if (!lockedChampion.IsAlive || ToMinionTeam(lockedChampion.Team) == towerHealth.towerTeam || FlatDistance(transform.position, lockedChampion.transform.position) > attackRange)
+            {
+                lockedChampion = null;
+                championRampStacks = 0;
+            }
+        }
     }
 
     Minion FindClosestEnemyMinion()
     {
-        Minion[] minions = FindObjectsByType<Minion>(FindObjectsSortMode.None);
-
         Minion closest = null;
         float closestDistance = Mathf.Infinity;
-
-        foreach (Minion m in minions)
+        foreach (Minion m in FindObjectsByType<Minion>(FindObjectsSortMode.None))
         {
-            if (m == null)
+            if (m == null || !m.gameObject.activeInHierarchy || m.hp <= 0f || m.team == towerHealth.towerTeam)
                 continue;
 
-            if (!m.gameObject.activeInHierarchy)
-                continue;
-
-            if (m.hp <= 0f)
-                continue;
-
-            if (m.team == towerHealth.towerTeam)
-                continue;
-
-            Vector3 towerPos = transform.position;
-            Vector3 minionPos = m.transform.position;
-
-            towerPos.y = 0f;
-            minionPos.y = 0f;
-
-            float distance = Vector3.Distance(towerPos, minionPos);
-
-            if (distance <= attackRange && distance < closestDistance)
+            float d = FlatDistance(transform.position, m.transform.position);
+            if (d <= attackRange && d < closestDistance)
             {
                 closest = m;
-                closestDistance = distance;
+                closestDistance = d;
             }
         }
-
         return closest;
     }
 
-    void ShootProjectile(Minion target)
+    Champion FindClosestEnemyChampion()
+    {
+        Champion closest = null;
+        float closestDistance = Mathf.Infinity;
+        foreach (Champion champion in FindObjectsByType<Champion>(FindObjectsSortMode.None))
+        {
+            if (champion == null || !champion.IsAlive)
+                continue;
+            if (ToMinionTeam(champion.Team) == towerHealth.towerTeam)
+                continue;
+
+            float d = FlatDistance(transform.position, champion.transform.position);
+            if (d <= attackRange && d < closestDistance)
+            {
+                closest = champion;
+                closestDistance = d;
+            }
+        }
+        return closest;
+    }
+
+    void ShootProjectile(Minion minionTarget, Champion championTarget, float damage)
     {
         Vector3 spawnPos = transform.position + Vector3.up * shootHeight;
-
         GameObject projectile = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        projectile.name = "Tower_Red_Energy_Bolt";
-
+        projectile.name = "Tower_Energy_Bolt";
         projectile.transform.position = spawnPos;
         projectile.transform.localScale = Vector3.one * projectileSize;
 
         Renderer renderer = projectile.GetComponent<Renderer>();
-
         if (renderer != null)
         {
-            Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-
-            Color color = Color.red;
-
-            if (towerHealth != null && towerHealth.towerTeam == MinionTeam.Blue)
-                color = new Color(0.2f, 0.7f, 1f);
-
-            if (towerHealth != null && towerHealth.towerTeam == MinionTeam.Red)
-                color = new Color(1f, 0.1f, 0.05f);
-
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            Material mat = new Material(shader);
+            Color color = towerHealth.towerTeam == MinionTeam.Blue ? new Color(0.2f, 0.7f, 1f) : new Color(1f, 0.1f, 0.05f);
             mat.color = color;
-
-            if (mat.HasProperty("_BaseColor"))
-                mat.SetColor("_BaseColor", color);
-
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
             if (mat.HasProperty("_EmissionColor"))
             {
                 mat.EnableKeyword("_EMISSION");
                 mat.SetColor("_EmissionColor", color * 2.5f);
             }
-
             renderer.material = mat;
         }
 
         Collider col = projectile.GetComponent<Collider>();
-        if (col != null)
-            Destroy(col);
+        if (col != null) Destroy(col);
 
         TowerBolt bolt = projectile.AddComponent<TowerBolt>();
-        bolt.target = target;
-        bolt.damage = attackDamage;
+        bolt.minionTarget = minionTarget;
+        bolt.championTarget = championTarget;
+        bolt.damage = damage;
         bolt.speed = projectileSpeed;
+
+        AOGAudioDirectorRuntime.Instance?.PlayCue(AOGAudioCue.TowerShot, spawnPos);
+    }
+
+    static float FlatDistance(Vector3 a, Vector3 b)
+    {
+        a.y = 0f;
+        b.y = 0f;
+        return Vector3.Distance(a, b);
+    }
+
+    static MinionTeam ToMinionTeam(TeamType team)
+    {
+        return team == TeamType.Red ? MinionTeam.Red : MinionTeam.Blue;
     }
 }

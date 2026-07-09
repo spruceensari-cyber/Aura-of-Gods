@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Conservative runtime stability pass for camera clipping, renderer visibility and LOD pop-in.
@@ -9,19 +10,24 @@ public class AOGVisualStabilityRuntime : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
     {
+        SceneManager.sceneLoaded -= HandleSceneLoaded;
+        SceneManager.sceneLoaded += HandleSceneLoaded;
+
         if (FindObjectOfType<AOGVisualStabilityRuntime>() != null) return;
         new GameObject("AOG_Visual_Stability_Runtime").AddComponent<AOGVisualStabilityRuntime>();
+    }
+
+    private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        AOGVisualStabilityRuntime runtime = FindObjectOfType<AOGVisualStabilityRuntime>();
+        if (runtime == null) return;
+        runtime.ApplyCameraSafety();
+        runtime.ApplyLodSafety();
     }
 
     void Awake()
     {
         DontDestroyOnLoad(gameObject);
-        ApplyCameraSafety();
-        ApplyLodSafety();
-    }
-
-    void OnLevelWasLoaded(int level)
-    {
         ApplyCameraSafety();
         ApplyLodSafety();
     }

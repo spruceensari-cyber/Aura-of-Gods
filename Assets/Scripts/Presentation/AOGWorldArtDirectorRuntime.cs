@@ -152,7 +152,7 @@ public class AOGWorldArtDirectorRuntime : MonoBehaviour
     private void BuildGrassTufts(Vector3 position, Vector3 forward, int seed)
     {
         Material grass = GetLitMaterial("WorldGrassTuft", new Color(0.10f, 0.28f, 0.15f), 0.04f, 0f);
-        int count = 5;
+        const int count = 5;
 
         for (int i = 0; i < count; i++)
         {
@@ -186,7 +186,7 @@ public class AOGWorldArtDirectorRuntime : MonoBehaviour
         post.GetComponent<Renderer>().sharedMaterial = metal;
         Destroy(post.GetComponent<Collider>());
 
-        GameObject crystal = GameObject.CreatePrimitive(PrimitiveType.Octahedron);
+        GameObject crystal = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         crystal.name = "Aether_Crystal";
         crystal.transform.SetParent(root.transform, false);
         crystal.transform.localPosition = new Vector3(0f, 2.05f, 0f);

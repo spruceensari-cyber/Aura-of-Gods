@@ -49,20 +49,26 @@ public static class AOGMobaCameraBootstrap
 
         controller.enabled = true;
         controller.autoFindLyra = true;
-        controller.pitch = 56f;
+        controller.pitch = 57f;
         controller.yaw = 45f;
-        controller.fieldOfView = 40f;
-        controller.defaultZoom = 19f;
-        controller.minZoom = 13f;
-        controller.maxZoom = 27f;
+        controller.fieldOfView = 48f;
+        controller.defaultZoom = 28f;
+        controller.minZoom = 16f;
+        controller.maxZoom = 46f;
+        controller.zoomStep = 3.2f;
         controller.edgePanEnabled = true;
-        controller.edgePanSpeed = 16f;
-        controller.maxPanDistanceFromTarget = 28f;
+        controller.edgePanSpeed = 18f;
+        controller.maxPanDistanceFromTarget = 36f;
+        controller.forwardFramingBias = 0.6f;
+        controller.targetLookAhead = 0.10f;
+        controller.maxLookAheadDistance = 1.6f;
 
         mainCamera.orthographic = false;
         mainCamera.fieldOfView = controller.fieldOfView;
         mainCamera.nearClipPlane = 0.1f;
-        mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, 600f);
+        mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, 700f);
+        mainCamera.allowHDR = true;
+        mainCamera.allowMSAA = true;
 
         AudioListener[] listeners = Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None);
         bool activeListenerFound = false;

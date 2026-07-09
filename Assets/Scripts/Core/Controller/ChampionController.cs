@@ -48,11 +48,8 @@ public class ChampionController : MonoBehaviour
 
     public void RefreshAbilities()
     {
-        for (int i = 0; i < abilities.Length; i++)
-            abilities[i] = null;
-
-        ChampionAbility[] allAbilities = GetComponents<ChampionAbility>();
-        foreach (ChampionAbility ability in allAbilities)
+        for (int i = 0; i < abilities.Length; i++) abilities[i] = null;
+        foreach (ChampionAbility ability in GetComponents<ChampionAbility>())
         {
             int index = ability.Key switch
             {
@@ -62,21 +59,15 @@ public class ChampionController : MonoBehaviour
                 AbilityKey.R => 3,
                 _ => -1
             };
-
-            if (index >= 0)
-                abilities[index] = ability;
+            if (index >= 0) abilities[index] = ability;
         }
     }
 
     void Update()
     {
-        if (champion == null || !champion.IsAlive)
-            return;
-
-        if (crowdControl == null)
-            crowdControl = GetComponent<AOGCrowdControlRuntime>();
-        if (mainCamera == null)
-            mainCamera = Camera.main;
+        if (champion == null || !champion.IsAlive) return;
+        if (crowdControl == null) crowdControl = GetComponent<AOGCrowdControlRuntime>();
+        if (mainCamera == null) mainCamera = Camera.main;
 
         HandleOrders();
         HandleAbilities();
@@ -87,9 +78,7 @@ public class ChampionController : MonoBehaviour
 
     private void HandleOrders()
     {
-        if (mainCamera == null)
-            return;
-
+        if (mainCamera == null) return;
         if (Input.GetMouseButtonDown(1))
         {
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
@@ -101,19 +90,14 @@ public class ChampionController : MonoBehaviour
                 isMoving = true;
             }
         }
-
-        if (Input.GetMouseButtonDown(0))
-            TryIssueAttackOrder();
+        if (Input.GetMouseButtonDown(0)) TryIssueAttackOrder();
     }
 
     private void TryIssueAttackOrder()
     {
-        if (mainCamera == null)
-            return;
-
+        if (mainCamera == null) return;
         Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
-        if (!Physics.Raycast(ray, out RaycastHit hit, 1000f))
-            return;
+        if (!Physics.Raycast(ray, out RaycastHit hit, 1000f)) return;
 
         Champion targetChampion = hit.collider.GetComponentInParent<Champion>();
         if (targetChampion != null && targetChampion != champion && targetChampion.Team != champion.Team)
@@ -137,9 +121,7 @@ public class ChampionController : MonoBehaviour
 
     private void UpdateAttackOrder()
     {
-        if (attackTarget == null)
-            return;
-
+        if (attackTarget == null) return;
         bool validChampion = attackChampion == null || (attackChampion.IsAlive && attackChampion.gameObject.activeInHierarchy);
         bool validUnit = attackUnit == null || attackUnit.IsAlive;
         if (!validChampion || !validUnit)
@@ -151,7 +133,6 @@ public class ChampionController : MonoBehaviour
         Vector3 flatTarget = attackTarget.position;
         flatTarget.y = transform.position.y;
         float distance = Vector3.Distance(transform.position, flatTarget);
-
         if (distance > attackRange)
         {
             moveTarget = flatTarget;
@@ -175,24 +156,24 @@ public class ChampionController : MonoBehaviour
 
     private void ResolveAttackWindup()
     {
-        if (!attackCommitted || Time.time < attackCommitTime)
-            return;
-
+        if (!attackCommitted || Time.time < attackCommitTime) return;
         attackCommitted = false;
-        if (attackTarget == null)
-            return;
+        if (attackTarget == null) return;
 
         float distance = Vector3.Distance(
             new Vector3(transform.position.x, 0f, transform.position.z),
             new Vector3(attackTarget.position.x, 0f, attackTarget.position.z));
-
-        if (distance > attackRange + 0.5f)
-            return;
+        if (distance > attackRange + 0.5f) return;
 
         if (attackChampion != null)
+        {
+            AOGMatchEventBridgeRuntime.Report(champion, attackChampion);
             attackChampion.TakeDamage(champion.AttackDamage, DamageType.Physical);
+        }
         else if (attackUnit != null)
+        {
             attackUnit.TakeDamage(champion.AttackDamage);
+        }
 
         OnBasicAttackResolved?.Invoke();
     }
@@ -209,7 +190,6 @@ public class ChampionController : MonoBehaviour
         Vector3 direction = moveTarget - transform.position;
         direction.y = 0f;
         float distance = direction.magnitude;
-
         if (distance <= stoppingDistance)
         {
             isMoving = false;
@@ -219,7 +199,6 @@ public class ChampionController : MonoBehaviour
 
         direction /= distance;
         FaceDirection(direction);
-
         float speed = champion.MovementSpeed;
         if (rb != null)
             rb.velocity = new Vector3(direction.x * speed, rb.velocity.y, direction.z * speed);
@@ -230,17 +209,14 @@ public class ChampionController : MonoBehaviour
     private void FaceDirection(Vector3 direction)
     {
         direction.y = 0f;
-        if (direction.sqrMagnitude < 0.0001f)
-            return;
-
+        if (direction.sqrMagnitude < 0.0001f) return;
         Quaternion targetRotation = Quaternion.LookRotation(direction.normalized);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * turnSpeed);
     }
 
     private void StopHorizontalVelocity()
     {
-        if (rb != null)
-            rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
+        if (rb != null) rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
     }
 
     private void ClearAttackOrder()
@@ -253,9 +229,7 @@ public class ChampionController : MonoBehaviour
 
     private void HandleAbilities()
     {
-        if (crowdControl != null && crowdControl.IsSilenced)
-            return;
-
+        if (crowdControl != null && crowdControl.IsSilenced) return;
         if (Input.GetKeyDown(KeyCode.Q)) CastAbility(0);
         if (Input.GetKeyDown(KeyCode.W)) CastAbility(1);
         if (Input.GetKeyDown(KeyCode.E)) CastAbility(2);
@@ -270,13 +244,11 @@ public class ChampionController : MonoBehaviour
         Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
         Vector3 targetPosition = transform.position + transform.forward * abilities[abilityIndex].Range;
         Champion targetChampion = null;
-
         if (Physics.Raycast(ray, out RaycastHit hit, 1000f))
         {
             targetPosition = hit.point;
             targetChampion = hit.collider.GetComponentInParent<Champion>();
         }
-
         abilities[abilityIndex].Cast(targetPosition, targetChampion);
     }
 }

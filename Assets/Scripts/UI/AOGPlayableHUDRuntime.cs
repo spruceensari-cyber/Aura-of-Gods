@@ -2,17 +2,17 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Zero-setup playable HUD for the current Aura of Gods map.
-/// It auto-installs at runtime, binds to the locally controlled champion and can later be replaced by art-prefab UI.
+/// Compact match HUD focused on combat readability. Rank/profile information is intentionally excluded.
 /// </summary>
 public class AOGPlayableHUDRuntime : MonoBehaviour
 {
     private const string HudRootName = "AOG_Playable_HUD_Runtime";
 
     private Champion player;
-    private ChampionAbility[] abilities;
+    private readonly ChampionAbility[] abilities = new ChampionAbility[4];
     private GameStateManager gameState;
     private ObjectiveManager objectives;
+    private float nextAbilityRefresh;
 
     private Text timerText;
     private Text scoreText;
@@ -26,17 +26,15 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
     private Image xpFill;
     private readonly Text[] abilityTexts = new Text[4];
     private readonly Image[] abilityCooldownFills = new Image[4];
+    private readonly Image[] abilityFrames = new Image[4];
 
     private static readonly string[] AbilityKeys = { "Q", "W", "E", "R" };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
     {
-        if (FindObjectOfType<AOGPlayableHUDRuntime>() != null)
-            return;
-
-        GameObject root = new GameObject(HudRootName);
-        root.AddComponent<AOGPlayableHUDRuntime>();
+        if (FindObjectOfType<AOGPlayableHUDRuntime>() != null) return;
+        new GameObject(HudRootName).AddComponent<AOGPlayableHUDRuntime>();
     }
 
     void Awake()
@@ -45,21 +43,21 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
         BuildHUD();
     }
 
-    void Start()
-    {
-        RebindRuntimeObjects();
-    }
+    void Start() => RebindRuntimeObjects();
 
     void Update()
     {
         if (player == null || !player.gameObject.activeInHierarchy)
             RebindRuntimeObjects();
 
-        if (gameState == null)
-            gameState = FindObjectOfType<GameStateManager>();
-        if (objectives == null)
-            objectives = FindObjectOfType<ObjectiveManager>();
+        if (Time.unscaledTime >= nextAbilityRefresh)
+        {
+            nextAbilityRefresh = Time.unscaledTime + 0.25f;
+            RefreshAbilityBindings();
+        }
 
+        if (gameState == null) gameState = FindObjectOfType<GameStateManager>();
+        if (objectives == null) objectives = FindObjectOfType<ObjectiveManager>();
         RefreshHUD();
     }
 
@@ -67,9 +65,28 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
     {
         ChampionController controller = FindObjectOfType<ChampionController>();
         player = controller != null ? controller.GetComponent<Champion>() : FindObjectOfType<Champion>();
-        abilities = player != null ? player.GetComponents<ChampionAbility>() : null;
         gameState = FindObjectOfType<GameStateManager>();
         objectives = FindObjectOfType<ObjectiveManager>();
+        RefreshAbilityBindings();
+    }
+
+    private void RefreshAbilityBindings()
+    {
+        for (int i = 0; i < abilities.Length; i++) abilities[i] = null;
+        if (player == null) return;
+
+        foreach (ChampionAbility ability in player.GetComponents<ChampionAbility>())
+        {
+            int index = ability.Key switch
+            {
+                AbilityKey.Q => 0,
+                AbilityKey.W => 1,
+                AbilityKey.E => 2,
+                AbilityKey.R => 3,
+                _ => -1
+            };
+            if (index >= 0) abilities[index] = ability;
+        }
     }
 
     private void BuildHUD()
@@ -90,47 +107,48 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
 
     private void BuildTopBar(Transform parent)
     {
-        GameObject panel = CreatePanel("TopBar", parent, new Vector2(0f, 1f), new Vector2(0f, 1f),
-            new Vector2(0f, -18f), new Vector2(480f, 62f), new Color(0.035f, 0.045f, 0.07f, 0.92f));
+        GameObject panel = CreatePanel("TopBar", parent, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(0f, -14f), new Vector2(430f, 48f), new Color(0.018f, 0.025f, 0.045f, 0.88f));
 
-        timerText = CreateText("Timer", panel.transform, "00:00", 26, TextAnchor.MiddleCenter,
-            new Vector2(0f, 12f), new Vector2(180f, 30f));
-        scoreText = CreateText("Score", panel.transform, "0   -   0", 22, TextAnchor.MiddleCenter,
-            new Vector2(0f, -15f), new Vector2(260f, 28f));
+        timerText = CreateText("Timer", panel.transform, "00:00", 22, TextAnchor.MiddleCenter,
+            new Vector2(0f, 10f), new Vector2(150f, 24f));
+        scoreText = CreateText("Score", panel.transform, "BLUE 0  •  0 RED", 18, TextAnchor.MiddleCenter,
+            new Vector2(0f, -11f), new Vector2(330f, 22f));
     }
 
     private void BuildBottomHUD(Transform parent)
     {
         GameObject panel = CreatePanel("BottomHUD", parent, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-            new Vector2(0f, 24f), new Vector2(890f, 190f), new Color(0.025f, 0.035f, 0.06f, 0.94f));
+            new Vector2(0f, 16f), new Vector2(720f, 138f), new Color(0.014f, 0.022f, 0.042f, 0.92f));
 
-        levelText = CreateText("Level", panel.transform, "LV 1", 24, TextAnchor.MiddleCenter,
-            new Vector2(-382f, 40f), new Vector2(100f, 42f));
-        goldText = CreateText("Gold", panel.transform, "0 G", 22, TextAnchor.MiddleCenter,
-            new Vector2(-382f, -12f), new Vector2(120f, 40f));
+        levelText = CreateText("Level", panel.transform, "LV 1", 20, TextAnchor.MiddleCenter,
+            new Vector2(-320f, 26f), new Vector2(72f, 30f));
+        goldText = CreateText("Gold", panel.transform, "0 G", 17, TextAnchor.MiddleCenter,
+            new Vector2(-320f, -15f), new Vector2(90f, 28f));
 
-        healthFill = CreateBar("Health", panel.transform, new Vector2(-165f, 56f), new Vector2(330f, 27f),
-            new Color(0.06f, 0.08f, 0.10f, 1f), new Color(0.12f, 0.72f, 0.31f, 1f));
-        healthText = CreateText("HealthText", panel.transform, "0 / 0", 18, TextAnchor.MiddleCenter,
-            new Vector2(-165f, 56f), new Vector2(330f, 27f));
+        healthFill = CreateBar("Health", panel.transform, new Vector2(-165f, 38f), new Vector2(250f, 22f),
+            new Color(0.035f, 0.045f, 0.06f, 1f), new Color(0.10f, 0.72f, 0.30f, 1f));
+        healthText = CreateText("HealthText", panel.transform, "0 / 0", 15, TextAnchor.MiddleCenter,
+            new Vector2(-165f, 38f), new Vector2(250f, 22f));
 
-        manaFill = CreateBar("Mana", panel.transform, new Vector2(-165f, 20f), new Vector2(330f, 22f),
-            new Color(0.06f, 0.08f, 0.10f, 1f), new Color(0.16f, 0.46f, 0.92f, 1f));
-        manaText = CreateText("ManaText", panel.transform, "0 / 0", 16, TextAnchor.MiddleCenter,
-            new Vector2(-165f, 20f), new Vector2(330f, 22f));
+        manaFill = CreateBar("Mana", panel.transform, new Vector2(-165f, 8f), new Vector2(250f, 17f),
+            new Color(0.035f, 0.045f, 0.06f, 1f), new Color(0.10f, 0.46f, 0.92f, 1f));
+        manaText = CreateText("ManaText", panel.transform, "0 / 0", 13, TextAnchor.MiddleCenter,
+            new Vector2(-165f, 8f), new Vector2(250f, 17f));
 
-        xpFill = CreateBar("XP", panel.transform, new Vector2(-165f, -9f), new Vector2(330f, 8f),
-            new Color(0.06f, 0.08f, 0.10f, 1f), new Color(0.58f, 0.32f, 0.92f, 1f));
+        xpFill = CreateBar("XP", panel.transform, new Vector2(-165f, -17f), new Vector2(250f, 5f),
+            new Color(0.035f, 0.045f, 0.06f, 1f), new Color(0.55f, 0.30f, 0.92f, 1f));
 
-        float startX = 72f;
+        float startX = 22f;
         for (int i = 0; i < 4; i++)
         {
             GameObject slot = CreatePanel("Ability_" + AbilityKeys[i], panel.transform,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(startX + i * 112f, 25f), new Vector2(96f, 96f),
-                new Color(0.08f, 0.10f, 0.16f, 1f));
+                new Vector2(startX + i * 86f, 8f), new Vector2(72f, 72f),
+                new Color(0.035f, 0.055f, 0.095f, 1f));
+            abilityFrames[i] = slot.GetComponent<Image>();
 
-            Image cooldown = CreateFillImage("Cooldown", slot.transform, new Color(0.02f, 0.02f, 0.03f, 0.78f));
+            Image cooldown = CreateFillImage("Cooldown", slot.transform, new Color(0.005f, 0.008f, 0.015f, 0.82f));
             cooldown.type = Image.Type.Filled;
             cooldown.fillMethod = Image.FillMethod.Radial360;
             cooldown.fillOrigin = 2;
@@ -138,18 +156,18 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
             cooldown.fillAmount = 0f;
             abilityCooldownFills[i] = cooldown;
 
-            abilityTexts[i] = CreateText("AbilityText", slot.transform, AbilityKeys[i], 24, TextAnchor.MiddleCenter,
-                Vector2.zero, new Vector2(90f, 90f));
+            abilityTexts[i] = CreateText("AbilityText", slot.transform, AbilityKeys[i], 20, TextAnchor.MiddleCenter,
+                Vector2.zero, new Vector2(68f, 68f));
         }
     }
 
     private void BuildObjectivePanel(Transform parent)
     {
         GameObject panel = CreatePanel("ObjectivePanel", parent, new Vector2(1f, 1f), new Vector2(1f, 1f),
-            new Vector2(-28f, -28f), new Vector2(330f, 104f), new Color(0.025f, 0.035f, 0.06f, 0.90f));
+            new Vector2(-18f, -18f), new Vector2(210f, 58f), new Color(0.014f, 0.022f, 0.042f, 0.86f));
 
-        objectiveText = CreateText("ObjectiveText", panel.transform, "DRAGON  LIVE\nMEDUSA  LIVE", 20,
-            TextAnchor.MiddleLeft, Vector2.zero, new Vector2(294f, 76f));
+        objectiveText = CreateText("ObjectiveText", panel.transform, "DRAGON LIVE   •   MEDUSA LIVE", 14,
+            TextAnchor.MiddleCenter, Vector2.zero, new Vector2(196f, 44f));
     }
 
     private void RefreshHUD()
@@ -165,7 +183,7 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
             TeamStats red = gameState.GetTeamStats(TeamType.Red);
             int blueKills = blue != null ? blue.Kills : 0;
             int redKills = red != null ? red.Kills : 0;
-            scoreText.text = $"BLUE  {blueKills}    -    {redKills}  RED";
+            scoreText.text = $"BLUE {blueKills}   •   {redKills} RED";
         }
 
         if (player != null)
@@ -181,11 +199,12 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
 
         for (int i = 0; i < abilityTexts.Length; i++)
         {
-            ChampionAbility ability = abilities != null && i < abilities.Length ? abilities[i] : null;
+            ChampionAbility ability = abilities[i];
             if (ability == null)
             {
                 abilityTexts[i].text = AbilityKeys[i];
                 abilityCooldownFills[i].fillAmount = 0f;
+                abilityFrames[i].color = new Color(0.12f, 0.04f, 0.05f, 1f);
                 continue;
             }
 
@@ -194,14 +213,17 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
             abilityCooldownFills[i].fillAmount = Mathf.Clamp01(remaining / cooldown);
             abilityTexts[i].text = remaining > 0.05f
                 ? $"{AbilityKeys[i]}\n{remaining:0.0}"
-                : $"{AbilityKeys[i]}\nREADY";
+                : AbilityKeys[i];
+            abilityFrames[i].color = remaining > 0.05f
+                ? new Color(0.035f, 0.055f, 0.095f, 1f)
+                : new Color(0.05f, 0.18f, 0.30f, 1f);
         }
 
         if (objectives != null)
         {
             string dragon = objectives.DragonAlive ? "LIVE" : FormatRespawn(objectives.DragonRespawnRemaining);
             string medusa = objectives.MedusaAlive ? "LIVE" : FormatRespawn(objectives.MedusaRespawnRemaining);
-            objectiveText.text = $"DRAGON   {dragon}\nMEDUSA   {medusa}";
+            objectiveText.text = $"DRAGON {dragon}   •   MEDUSA {medusa}";
         }
     }
 
@@ -222,7 +244,9 @@ public class AOGPlayableHUDRuntime : MonoBehaviour
         rect.pivot = anchorMin;
         rect.anchoredPosition = anchoredPosition;
         rect.sizeDelta = size;
-        obj.GetComponent<Image>().color = color;
+        Image image = obj.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
         return obj;
     }
 

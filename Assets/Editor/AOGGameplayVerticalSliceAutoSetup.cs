@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 [InitializeOnLoad]
 public static class AOGGameplayVerticalSliceAutoSetup
 {
-    private const string SessionKey = "AOG.GameplayVerticalSliceAutoSetup.v1";
+    private const string SessionKey = "AOG.GameplayVerticalSliceAutoSetup.v2";
 
     static AOGGameplayVerticalSliceAutoSetup()
     {
@@ -62,11 +62,10 @@ public static class AOGGameplayVerticalSliceAutoSetup
 
     private static bool SetupScene(Scene scene)
     {
+        bool changed = RemoveLegacyReadabilityObjects(scene);
         Camera camera = FindGameplayCamera(scene);
         if (camera == null)
-            return false;
-
-        bool changed = false;
+            return changed;
 
         if (camera.tag != "MainCamera")
         {
@@ -96,12 +95,17 @@ public static class AOGGameplayVerticalSliceAutoSetup
             changed = true;
         }
 
-        changed |= SetIfDifferent(ref controller.pitch, 56f);
+        changed |= SetIfDifferent(ref controller.pitch, 57f);
         changed |= SetIfDifferent(ref controller.yaw, 45f);
-        changed |= SetIfDifferent(ref controller.fieldOfView, 40f);
-        changed |= SetIfDifferent(ref controller.defaultZoom, 19f);
-        changed |= SetIfDifferent(ref controller.minZoom, 13f);
-        changed |= SetIfDifferent(ref controller.maxZoom, 27f);
+        changed |= SetIfDifferent(ref controller.fieldOfView, 48f);
+        changed |= SetIfDifferent(ref controller.defaultZoom, 28f);
+        changed |= SetIfDifferent(ref controller.minZoom, 16f);
+        changed |= SetIfDifferent(ref controller.maxZoom, 46f);
+        changed |= SetIfDifferent(ref controller.zoomStep, 3.2f);
+        changed |= SetIfDifferent(ref controller.maxPanDistanceFromTarget, 36f);
+        changed |= SetIfDifferent(ref controller.forwardFramingBias, 0.6f);
+        changed |= SetIfDifferent(ref controller.targetLookAhead, 0.10f);
+        changed |= SetIfDifferent(ref controller.maxLookAheadDistance, 1.6f);
 
         if (!controller.autoFindLyra)
         {
@@ -121,9 +125,9 @@ public static class AOGGameplayVerticalSliceAutoSetup
             changed = true;
         }
 
-        if (!Mathf.Approximately(camera.fieldOfView, 40f))
+        if (!Mathf.Approximately(camera.fieldOfView, 48f))
         {
-            camera.fieldOfView = 40f;
+            camera.fieldOfView = 48f;
             changed = true;
         }
 
@@ -132,6 +136,54 @@ public static class AOGGameplayVerticalSliceAutoSetup
             EditorUtility.SetDirty(camera);
             EditorUtility.SetDirty(controller);
             EditorSceneManager.MarkSceneDirty(scene);
+        }
+
+        return changed;
+    }
+
+    private static bool RemoveLegacyReadabilityObjects(Scene scene)
+    {
+        bool changed = false;
+
+        foreach (GameObject root in scene.GetRootGameObjects())
+            changed |= RemoveLegacyRecursive(root.transform);
+
+        AOGPremiumUnitAnimator[] legacyAnimators = Object.FindObjectsByType<AOGPremiumUnitAnimator>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (AOGPremiumUnitAnimator animator in legacyAnimators)
+        {
+            if (animator == null || animator.gameObject.scene != scene)
+                continue;
+
+            if (animator.enabled)
+            {
+                animator.enabled = false;
+                EditorUtility.SetDirty(animator);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private static bool RemoveLegacyRecursive(Transform current)
+    {
+        if (current == null)
+            return false;
+
+        bool changed = false;
+        for (int i = current.childCount - 1; i >= 0; i--)
+        {
+            Transform child = current.GetChild(i);
+            string lower = child.gameObject.name.ToLowerInvariant();
+
+            if (lower.Contains("readability_ring") || lower == "aog_premium_ground_shadow")
+            {
+                Object.DestroyImmediate(child.gameObject);
+                changed = true;
+                continue;
+            }
+
+            changed |= RemoveLegacyRecursive(child);
         }
 
         return changed;

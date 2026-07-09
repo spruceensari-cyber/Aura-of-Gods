@@ -32,6 +32,9 @@ public class AOGUnifiedInputAttachRetry : MonoBehaviour
                 if (player.GetComponent<AOGUnifiedMobaInputDriver>() == null)
                     player.gameObject.AddComponent<AOGUnifiedMobaInputDriver>();
 
+                if (player.GetComponent<LyraSkillSet>() != null && player.GetComponent<AOGLyraSkillInputBridgeRuntime>() == null)
+                    player.gameObject.AddComponent<AOGLyraSkillInputBridgeRuntime>();
+
                 yield break;
             }
 

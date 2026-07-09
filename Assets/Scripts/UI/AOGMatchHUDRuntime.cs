@@ -74,9 +74,12 @@ public class AOGMatchHUDRuntime : MonoBehaviour
         int minutes = Mathf.FloorToInt(time / 60f);
         int seconds = Mathf.FloorToInt(time % 60f);
 
-        var blue = gsm.GetTeamStats(TeamType.Blue);
-        var red = gsm.GetTeamStats(TeamType.Red);
-        scoreboardText.text = $"BLUE {blue.kills}/{blue.deaths}/{blue.objectives}   •   {minutes:00}:{seconds:00}   •   {red.kills}/{red.deaths}/{red.objectives} RED";
+        TeamStats blue = gsm.GetTeamStats(TeamType.Blue);
+        TeamStats red = gsm.GetTeamStats(TeamType.Red);
+        if (blue == null || red == null)
+            return;
+
+        scoreboardText.text = $"BLUE {blue.Kills}/{blue.Deaths}/{blue.Objectives}   •   {minutes:00}:{seconds:00}   •   {red.Kills}/{red.Deaths}/{red.Objectives} RED";
     }
 
     private void RefreshMinimap()

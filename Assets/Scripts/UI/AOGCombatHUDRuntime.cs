@@ -50,6 +50,7 @@ public class AOGCombatHUDRuntime : MonoBehaviour
     private Text timerText;
     private readonly Image[] cooldownFills = new Image[4];
     private readonly Text[] cooldownTexts = new Text[4];
+    private readonly float[] cooldownRatios = new float[4];
     private float matchStartTime;
     private float nextPlayerSearchTime;
 
@@ -186,19 +187,14 @@ public class AOGCombatHUDRuntime : MonoBehaviour
 
     private void UpdateCooldowns()
     {
-        float[] ratios = new float[4];
-
-        if (lyra != null)
-        {
-            ratios[0] = lyra.GetQCooldownRatio();
-            ratios[1] = lyra.GetWCooldownRatio();
-            ratios[2] = lyra.GetECooldownRatio();
-            ratios[3] = lyra.GetRCooldownRatio();
-        }
+        cooldownRatios[0] = lyra != null ? lyra.GetQCooldownRatio() : 0f;
+        cooldownRatios[1] = lyra != null ? lyra.GetWCooldownRatio() : 0f;
+        cooldownRatios[2] = lyra != null ? lyra.GetECooldownRatio() : 0f;
+        cooldownRatios[3] = lyra != null ? lyra.GetRCooldownRatio() : 0f;
 
         for (int i = 0; i < 4; i++)
         {
-            float ratio = Mathf.Clamp01(ratios[i]);
+            float ratio = Mathf.Clamp01(cooldownRatios[i]);
             cooldownFills[i].fillAmount = ratio;
             cooldownTexts[i].text = ratio > 0.01f ? Mathf.CeilToInt(ratio * GetCooldownDuration(i)).ToString() : string.Empty;
         }
@@ -228,7 +224,9 @@ public class AOGCombatHUDRuntime : MonoBehaviour
         rect.pivot = anchorMin == anchorMax ? anchorMin : new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = anchoredPosition;
         rect.sizeDelta = size;
-        go.GetComponent<Image>().color = color;
+        Image image = go.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
         return rect;
     }
 
@@ -279,13 +277,17 @@ public class AOGCombatHUDRuntime : MonoBehaviour
 
     private void CreateBorder(RectTransform target, Color color)
     {
-        GameObject borderObject = new GameObject("Border", typeof(RectTransform), typeof(Outline));
+        GameObject borderObject = new GameObject("Border", typeof(RectTransform), typeof(Image), typeof(Outline));
         borderObject.transform.SetParent(target, false);
         RectTransform rect = borderObject.GetComponent<RectTransform>();
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = Vector2.one;
         rect.offsetMin = Vector2.zero;
         rect.offsetMax = Vector2.zero;
+
+        Image image = borderObject.GetComponent<Image>();
+        image.color = new Color(0f, 0f, 0f, 0.001f);
+        image.raycastTarget = false;
 
         Outline outline = borderObject.GetComponent<Outline>();
         outline.effectColor = color;

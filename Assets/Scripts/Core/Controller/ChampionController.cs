@@ -7,6 +7,7 @@ using UnityEngine;
 public class ChampionController : MonoBehaviour
 {
     private Champion champion;
+    private AOGCrowdControlRuntime crowdControl;
     private Rigidbody rb;
     private Camera mainCamera;
     private Vector3 moveTarget;
@@ -39,6 +40,7 @@ public class ChampionController : MonoBehaviour
     void Start()
     {
         champion = GetComponent<Champion>();
+        crowdControl = GetComponent<AOGCrowdControlRuntime>();
         rb = GetComponent<Rigidbody>();
         mainCamera = Camera.main;
         RefreshAbilities();
@@ -71,6 +73,8 @@ public class ChampionController : MonoBehaviour
         if (champion == null || !champion.IsAlive)
             return;
 
+        if (crowdControl == null)
+            crowdControl = GetComponent<AOGCrowdControlRuntime>();
         if (mainCamera == null)
             mainCamera = Camera.main;
 
@@ -159,7 +163,7 @@ public class ChampionController : MonoBehaviour
         StopHorizontalVelocity();
         FaceDirection(flatTarget - transform.position);
 
-        if (!attackCommitted && Time.time >= nextAttackTime && !champion.IsCasting && !champion.IsStunned)
+        if (!attackCommitted && Time.time >= nextAttackTime && !champion.IsCasting && !champion.IsStunned && !(crowdControl != null && crowdControl.IsAirborne))
         {
             attackCommitted = true;
             attackCommitTime = Time.time + attackWindup;
@@ -195,7 +199,8 @@ public class ChampionController : MonoBehaviour
 
     private void UpdateMovement()
     {
-        if (!isMoving || champion.IsCasting || champion.IsStunned)
+        bool hardStopped = crowdControl != null && (crowdControl.IsRooted || crowdControl.IsAirborne);
+        if (!isMoving || champion.IsCasting || champion.IsStunned || hardStopped)
         {
             StopHorizontalVelocity();
             return;
@@ -248,6 +253,9 @@ public class ChampionController : MonoBehaviour
 
     private void HandleAbilities()
     {
+        if (crowdControl != null && crowdControl.IsSilenced)
+            return;
+
         if (Input.GetKeyDown(KeyCode.Q)) CastAbility(0);
         if (Input.GetKeyDown(KeyCode.W)) CastAbility(1);
         if (Input.GetKeyDown(KeyCode.E)) CastAbility(2);

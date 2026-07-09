@@ -2,8 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Bridges champion deaths into game-state scorekeeping, kill feed and announcer events.
-/// Attacker attribution is tracked from the latest champion damage source when available.
+/// Bridges champion deaths into game-state scorekeeping, kill feed, announcer and replay events.
 /// </summary>
 public class AOGMatchEventBridgeRuntime : MonoBehaviour
 {
@@ -21,10 +20,7 @@ public class AOGMatchEventBridgeRuntime : MonoBehaviour
         obj.AddComponent<AOGMatchEventBridgeRuntime>();
     }
 
-    void Awake()
-    {
-        DontDestroyOnLoad(gameObject);
-    }
+    void Awake() => DontDestroyOnLoad(gameObject);
 
     void Update()
     {
@@ -32,7 +28,6 @@ public class AOGMatchEventBridgeRuntime : MonoBehaviour
         {
             if (champion == null || !champion.gameObject.scene.IsValid() || bound.Contains(champion))
                 continue;
-
             bound.Add(champion);
             champion.OnDeath += () => HandleDeath(champion);
         }
@@ -44,6 +39,7 @@ public class AOGMatchEventBridgeRuntime : MonoBehaviour
             return;
         lastAttacker[victim] = attacker;
         lastAttackTime[victim] = Time.time;
+        AOGReplayEventLogRuntime.Instance?.Record("DamageAttribution", attacker.name, victim.name, victim.transform.position);
     }
 
     private void HandleDeath(Champion victim)
@@ -57,12 +53,13 @@ public class AOGMatchEventBridgeRuntime : MonoBehaviour
         {
             FindObjectOfType<GameStateManager>()?.RecordKill(killer, victim);
             FindObjectOfType<AOGMatchHUDRuntime>()?.AddKillFeed(killer.name, victim.name);
-            AOGAnnouncerRuntime announcer = FindObjectOfType<AOGAnnouncerRuntime>();
-            announcer?.Announce("ELIMINATION", AOGAudioCue.ChampionDeath, 1.1f);
+            FindObjectOfType<AOGAnnouncerRuntime>()?.Announce("ELIMINATION", AOGAudioCue.ChampionDeath, 1.1f);
+            AOGReplayEventLogRuntime.Instance?.Record("Kill", killer.name, victim.name, victim.transform.position);
         }
         else
         {
             FindObjectOfType<AOGMatchHUDRuntime>()?.AddKillFeed("WORLD", victim.name);
+            AOGReplayEventLogRuntime.Instance?.Record("WorldDeath", "WORLD", victim.name, victim.transform.position);
         }
 
         lastAttacker.Remove(victim);

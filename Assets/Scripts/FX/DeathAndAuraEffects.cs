@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections;
 
 /// <summary>
-/// Champion death animation with dark gothic theme
+/// Champion death animation with dark gothic theme.
 /// </summary>
 public class DeathEffect : MonoBehaviour
 {
@@ -10,28 +10,28 @@ public class DeathEffect : MonoBehaviour
     private Renderer[] renderers;
     private float elapsedTime;
     private bool isDying;
-    
-    void Start()
+
+    private void Start()
     {
         renderers = GetComponentsInChildren<Renderer>();
     }
-    
+
     public void PlayDeathEffect()
     {
+        if (isDying)
+            return;
+
         isDying = true;
         elapsedTime = 0f;
-        
-        // Create dark vortex effect at death position
+
         GothicParticlePresets.CreateShadowExplosion(transform.position, 2f);
         GothicParticlePresets.CreateDarkAura(transform.position, 3f);
         GothicParticlePresets.CreateBloodExplosion(transform.position);
-        
-        // Play death sound
+
         AudioSource audio = GetComponent<AudioSource>();
         if (audio == null)
             audio = gameObject.AddComponent<AudioSource>();
-        
-        // Fade out effect
+
         StartCoroutine(FadeOutCoroutine());
     }
 
@@ -43,18 +43,19 @@ public class DeathEffect : MonoBehaviour
         while (t < duration)
         {
             t += Time.deltaTime;
+            elapsedTime = t;
             float alpha = 1f - Mathf.Clamp01(t / duration);
 
-            foreach (Renderer r in renderers)
+            foreach (Renderer targetRenderer in renderers)
             {
-                if (r == null)
+                if (targetRenderer == null)
                     continue;
 
-                foreach (Material material in r.materials)
+                foreach (Material material in targetRenderer.materials)
                 {
-                    Color c = material.color;
-                    c.a = alpha;
-                    material.color = c;
+                    Color color = material.color;
+                    color.a = alpha;
+                    material.color = color;
                 }
             }
 
@@ -66,7 +67,7 @@ public class DeathEffect : MonoBehaviour
 }
 
 /// <summary>
-/// Gothic-themed aura effect for champions
+/// Gothic-themed aura effect for champions.
 /// </summary>
 public class ChampionAuraEffect : MonoBehaviour
 {
@@ -74,40 +75,48 @@ public class ChampionAuraEffect : MonoBehaviour
     [SerializeField] private float pulseSpeed = 2f;
     [SerializeField] private float minScale = 0.9f;
     [SerializeField] private float maxScale = 1.1f;
-    
+
     private GameObject auraObject;
     private ParticleSystem auraParticles;
     private float time;
-    
-    void Start()
+
+    private void Start()
     {
         CreateAura();
     }
-    
+
     private void CreateAura()
     {
         auraObject = new GameObject("ChampionAura");
         auraObject.transform.SetParent(transform);
         auraObject.transform.localPosition = Vector3.zero;
-        
+
         auraParticles = auraObject.AddComponent<ParticleSystem>();
-        var main = auraParticles.main;
+        auraParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        auraParticles.Clear(true);
+
+        ParticleSystem.MainModule main = auraParticles.main;
         main.startColor = auraColor;
         main.startSize = new ParticleSystem.MinMaxCurve(0.5f, 1f);
         main.startLifetime = 1f;
         main.maxParticles = 30;
         main.loop = true;
-        
-        var emission = auraParticles.emission;
+
+        ParticleSystem.EmissionModule emission = auraParticles.emission;
         emission.rateOverTime = 15f;
-        
-        var shape = auraParticles.shape;
+
+        ParticleSystem.ShapeModule shape = auraParticles.shape;
         shape.shapeType = ParticleSystemShapeType.Sphere;
         shape.radius = 1.5f;
+
+        auraParticles.Play(true);
     }
-    
-    void Update()
+
+    private void Update()
     {
+        if (auraObject == null)
+            return;
+
         time += Time.deltaTime * pulseSpeed;
         float scale = Mathf.Lerp(minScale, maxScale, (Mathf.Sin(time) + 1f) / 2f);
         auraObject.transform.localScale = Vector3.one * scale;

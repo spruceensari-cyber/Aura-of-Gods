@@ -16,6 +16,7 @@ public class ChampionPresentationController : MonoBehaviour
     private float lastHitReactionTime;
     private bool dead;
     private AOGMobaCameraController cameraController;
+    private AOGChampionProceduralAnimator proceduralAnimator;
 
     public float BasicAttackWindup => profile != null ? profile.basicAttackWindup : 0.22f;
     public float BasicAttackRecovery => profile != null ? profile.basicAttackRecovery : 0.18f;
@@ -30,10 +31,13 @@ public class ChampionPresentationController : MonoBehaviour
     private void ResolveReferences()
     {
         if (animator == null)
-            animator = GetComponentInChildren<Animator>();
+            animator = GetComponentInChildren<Animator>(true);
 
         if (audioController == null)
             audioController = GetComponent<ChampionAudioController>();
+
+        if (proceduralAnimator == null)
+            proceduralAnimator = GetComponent<AOGChampionProceduralAnimator>();
 
         if (cameraController == null && Camera.main != null)
             cameraController = Camera.main.GetComponent<AOGMobaCameraController>();
@@ -59,7 +63,12 @@ public class ChampionPresentationController : MonoBehaviour
 
     public void SetPlanarVelocity(Vector3 worldVelocity)
     {
-        if (dead || animator == null)
+        if (dead)
+            return;
+
+        ResolveReferences();
+
+        if (animator == null)
             return;
 
         Vector3 planar = new Vector3(worldVelocity.x, 0f, worldVelocity.z);
@@ -79,6 +88,8 @@ public class ChampionPresentationController : MonoBehaviour
         if (dead)
             return;
 
+        ResolveReferences();
+
         int variantCount = profile != null ? Mathf.Clamp(profile.basicAttackVariants, 1, 3) : 3;
         int next = variantCount == 1 ? 0 : Random.Range(0, variantCount);
 
@@ -93,6 +104,7 @@ public class ChampionPresentationController : MonoBehaviour
             SetTrigger(ProfileString(p => p.attackTrigger, "Attack"));
         }
 
+        proceduralAnimator?.PlayAttack(next);
         audioController?.PlayAttackWhoosh();
     }
 
@@ -100,6 +112,8 @@ public class ChampionPresentationController : MonoBehaviour
     {
         if (dead)
             return;
+
+        ResolveReferences();
 
         string trigger;
         switch (slot)
@@ -111,6 +125,7 @@ public class ChampionPresentationController : MonoBehaviour
         }
 
         SetTrigger(trigger);
+        proceduralAnimator?.PlaySkill(Mathf.Clamp(slot, 0, 3));
         audioController?.PlayAbilityCast(Mathf.Clamp(slot, 0, 3));
     }
 
@@ -119,8 +134,10 @@ public class ChampionPresentationController : MonoBehaviour
         if (dead || Time.time - lastHitReactionTime < 0.18f)
             return;
 
+        ResolveReferences();
         lastHitReactionTime = Time.time;
         SetTrigger(ProfileString(p => p.hitTrigger, "Hit"));
+        proceduralAnimator?.PlayHit();
         audioController?.PlayHitReaction();
     }
 
@@ -129,9 +146,11 @@ public class ChampionPresentationController : MonoBehaviour
         if (dead)
             return;
 
+        ResolveReferences();
         dead = true;
         SetWeaponTrail(false);
         SetTrigger(ProfileString(p => p.deathTrigger, "Death"));
+        proceduralAnimator?.PlayDeath();
         audioController?.PlayDeath();
         GetCameraController()?.AddRandomImpulse(0.34f);
     }
@@ -162,6 +181,14 @@ public class ChampionPresentationController : MonoBehaviour
             GameObject instance = Instantiate(prefab, worldPosition, Quaternion.identity);
             Destroy(instance, 3f);
         }
+        else
+        {
+            AOGActiveChampion active = GetComponent<AOGActiveChampion>();
+            Color color = active != null ? active.accentColor : new Color(0.42f, 0.62f, 1f, 1f);
+            float radius = ultimate ? 1.8f : empowered ? 1.15f : 0.65f;
+            GameObject ring = AOGAbilityVisuals.CreateRing("Champion_Impact", worldPosition + Vector3.up * 0.05f, radius, color, ultimate ? 0.16f : 0.075f);
+            Destroy(ring, ultimate ? 0.75f : 0.35f);
+        }
 
         float impulse = ultimate ? 0.38f : empowered ? 0.22f : 0.10f;
         GetCameraController()?.AddRandomImpulse(impulse);
@@ -177,6 +204,14 @@ public class ChampionPresentationController : MonoBehaviour
         {
             GameObject instance = Instantiate(prefab, worldPosition, Quaternion.identity);
             Destroy(instance, 4f);
+        }
+        else
+        {
+            AOGActiveChampion active = GetComponent<AOGActiveChampion>();
+            Color color = active != null ? active.accentColor : new Color(0.52f, 0.28f, 0.92f, 1f);
+            float radius = slot == 3 ? 2.4f : 1.15f;
+            GameObject ring = AOGAbilityVisuals.CreateRing("Ability_Impact_" + slot, worldPosition + Vector3.up * 0.04f, radius, color, slot == 3 ? 0.18f : 0.08f);
+            Destroy(ring, slot == 3 ? 0.9f : 0.45f);
         }
 
         audioController?.PlayAbilityImpact(Mathf.Clamp(slot, 0, 3));
@@ -203,7 +238,6 @@ public class ChampionPresentationController : MonoBehaviour
     {
         if (cameraController == null && Camera.main != null)
             cameraController = Camera.main.GetComponent<AOGMobaCameraController>();
-
         return cameraController;
     }
 

@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// MOBA-style player controller: right-click movement, left-click attack orders and Q/W/E/R casting.
-/// Keeps combat orders separate from presentation so models and animation rigs can be replaced later.
+/// Keeps combat orders separate from presentation so models, rigs and animation systems can be replaced later.
 /// </summary>
 public class ChampionController : MonoBehaviour
 {
@@ -20,7 +20,7 @@ public class ChampionController : MonoBehaviour
     [SerializeField] private float attackRange = 2.25f;
     [SerializeField] private float attackWindup = 0.18f;
 
-    private ChampionAbility[] abilities = new ChampionAbility[4];
+    private readonly ChampionAbility[] abilities = new ChampionAbility[4];
     private Transform attackTarget;
     private Champion attackChampion;
     private CombatUnit attackUnit;
@@ -31,16 +31,39 @@ public class ChampionController : MonoBehaviour
     public Vector3 MoveTarget => moveTarget;
     public bool IsMoving => isMoving;
     public Transform AttackTarget => attackTarget;
+    public float AttackRange => attackRange;
+
+    public event System.Action OnBasicAttackWindup;
+    public event System.Action OnBasicAttackResolved;
 
     void Start()
     {
         champion = GetComponent<Champion>();
         rb = GetComponent<Rigidbody>();
         mainCamera = Camera.main;
+        RefreshAbilities();
+    }
+
+    public void RefreshAbilities()
+    {
+        for (int i = 0; i < abilities.Length; i++)
+            abilities[i] = null;
 
         ChampionAbility[] allAbilities = GetComponents<ChampionAbility>();
-        for (int i = 0; i < Mathf.Min(allAbilities.Length, abilities.Length); i++)
-            abilities[i] = allAbilities[i];
+        foreach (ChampionAbility ability in allAbilities)
+        {
+            int index = ability.Key switch
+            {
+                AbilityKey.Q => 0,
+                AbilityKey.W => 1,
+                AbilityKey.E => 2,
+                AbilityKey.R => 3,
+                _ => -1
+            };
+
+            if (index >= 0)
+                abilities[index] = ability;
+        }
     }
 
     void Update()
@@ -142,6 +165,7 @@ public class ChampionController : MonoBehaviour
             attackCommitTime = Time.time + attackWindup;
             float attacksPerSecond = Mathf.Max(0.1f, champion.AttackSpeed);
             nextAttackTime = Time.time + (1f / attacksPerSecond);
+            OnBasicAttackWindup?.Invoke();
         }
     }
 
@@ -165,6 +189,8 @@ public class ChampionController : MonoBehaviour
             attackChampion.TakeDamage(champion.AttackDamage, DamageType.Physical);
         else if (attackUnit != null)
             attackUnit.TakeDamage(champion.AttackDamage);
+
+        OnBasicAttackResolved?.Invoke();
     }
 
     private void UpdateMovement()

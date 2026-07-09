@@ -3,15 +3,31 @@ using UnityEngine;
 
 public enum AOGDraftPhase { Idle, BlueBan, RedBan, BluePick, RedPick, Locked }
 
+/// <summary>
+/// Tournament draft flow with global hero uniqueness.
+/// The same hero can never be picked by both teams or twice within one match.
+/// </summary>
 public class AOGDraftBanRuntime : MonoBehaviour
 {
     public AOGDraftPhase Phase { get; private set; } = AOGDraftPhase.Idle;
     public float PhaseRemaining { get; private set; }
     public readonly List<string> BluePicks = new();
     public readonly List<string> RedPicks = new();
-    public readonly List<string> Bans = new();
+    public readonly List<string> BlueBans = new();
+    public readonly List<string> RedBans = new();
 
     [SerializeField] private float phaseSeconds = 25f;
+    [SerializeField] private int bansPerTeam = 3;
+    [SerializeField] private int picksPerTeam = 5;
+
+    public IEnumerable<string> AllBans
+    {
+        get
+        {
+            foreach (string hero in BlueBans) yield return hero;
+            foreach (string hero in RedBans) yield return hero;
+        }
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Install()
@@ -26,40 +42,98 @@ public class AOGDraftBanRuntime : MonoBehaviour
     {
         if (Phase == AOGDraftPhase.Idle || Phase == AOGDraftPhase.Locked) return;
         PhaseRemaining -= Time.unscaledDeltaTime;
-        if (PhaseRemaining <= 0f) Advance();
+        if (PhaseRemaining <= 0f)
+            PhaseRemaining = 0f; // explicit choice required; no silent random pick or ban
     }
 
     public void StartDraft()
     {
-        BluePicks.Clear(); RedPicks.Clear(); Bans.Clear();
+        BluePicks.Clear();
+        RedPicks.Clear();
+        BlueBans.Clear();
+        RedBans.Clear();
         SetPhase(AOGDraftPhase.BlueBan);
     }
 
-    public bool Submit(string championId)
+    public bool Submit(string heroId)
     {
-        if (string.IsNullOrWhiteSpace(championId) || Bans.Contains(championId) || BluePicks.Contains(championId) || RedPicks.Contains(championId)) return false;
+        if (!IsHeroAvailable(heroId)) return false;
+
         switch (Phase)
         {
             case AOGDraftPhase.BlueBan:
-            case AOGDraftPhase.RedBan: Bans.Add(championId); break;
-            case AOGDraftPhase.BluePick: BluePicks.Add(championId); break;
-            case AOGDraftPhase.RedPick: RedPicks.Add(championId); break;
-            default: return false;
+                if (BlueBans.Count >= bansPerTeam) return false;
+                BlueBans.Add(heroId);
+                break;
+            case AOGDraftPhase.RedBan:
+                if (RedBans.Count >= bansPerTeam) return false;
+                RedBans.Add(heroId);
+                break;
+            case AOGDraftPhase.BluePick:
+                if (BluePicks.Count >= picksPerTeam) return false;
+                BluePicks.Add(heroId);
+                break;
+            case AOGDraftPhase.RedPick:
+                if (RedPicks.Count >= picksPerTeam) return false;
+                RedPicks.Add(heroId);
+                break;
+            default:
+                return false;
         }
+
+        AOGReplayEventLogRuntime.Instance?.Record("DraftChoice", Phase.ToString(), heroId, Vector3.zero);
         Advance();
         return true;
     }
 
+    public bool IsHeroAvailable(string heroId)
+    {
+        if (string.IsNullOrWhiteSpace(heroId)) return false;
+        return !BlueBans.Contains(heroId)
+            && !RedBans.Contains(heroId)
+            && !BluePicks.Contains(heroId)
+            && !RedPicks.Contains(heroId);
+    }
+
+    public IReadOnlyList<string> RecommendBansForBlue(IEnumerable<string> redPlayerIds, int count = 3)
+    {
+        return AOGHeroMasteryRuntime.Instance != null
+            ? AOGHeroMasteryRuntime.Instance.RecommendBans(redPlayerIds, count)
+            : new List<string>();
+    }
+
+    public IReadOnlyList<string> RecommendBansForRed(IEnumerable<string> bluePlayerIds, int count = 3)
+    {
+        return AOGHeroMasteryRuntime.Instance != null
+            ? AOGHeroMasteryRuntime.Instance.RecommendBans(bluePlayerIds, count)
+            : new List<string>();
+    }
+
     void Advance()
     {
-        SetPhase(Phase switch
+        if (BlueBans.Count < bansPerTeam || RedBans.Count < bansPerTeam)
         {
-            AOGDraftPhase.BlueBan => AOGDraftPhase.RedBan,
-            AOGDraftPhase.RedBan => AOGDraftPhase.BluePick,
-            AOGDraftPhase.BluePick => AOGDraftPhase.RedPick,
-            AOGDraftPhase.RedPick => BluePicks.Count >= 3 && RedPicks.Count >= 3 ? AOGDraftPhase.Locked : AOGDraftPhase.BluePick,
-            _ => AOGDraftPhase.Locked
-        });
+            if (Phase == AOGDraftPhase.BlueBan) SetPhase(AOGDraftPhase.RedBan);
+            else SetPhase(AOGDraftPhase.BlueBan);
+            return;
+        }
+
+        if (BluePicks.Count >= picksPerTeam && RedPicks.Count >= picksPerTeam)
+        {
+            SetPhase(AOGDraftPhase.Locked);
+            return;
+        }
+
+        if (Phase == AOGDraftPhase.BlueBan || Phase == AOGDraftPhase.RedBan)
+        {
+            SetPhase(AOGDraftPhase.BluePick);
+            return;
+        }
+
+        if (Phase == AOGDraftPhase.BluePick)
+            SetPhase(AOGDraftPhase.RedPick);
+        else
+            SetPhase(AOGDraftPhase.BluePick);
     }
 
     void SetPhase(AOGDraftPhase phase)

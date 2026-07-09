@@ -9,7 +9,10 @@ public class AOGPartyProfile
     public string PartyId;
     public List<AOGPlayerRatingProfile> Members = new();
 
-    public float AverageElo => Members == null || Members.Count == 0 ? 1200f : Members.Average(m => m.Elo);
+    public float AverageElo => Members == null || Members.Count == 0
+        ? 1200f
+        : (float)Members.Average(m => m.Elo);
+
     public int Size => Members?.Count ?? 0;
 }
 

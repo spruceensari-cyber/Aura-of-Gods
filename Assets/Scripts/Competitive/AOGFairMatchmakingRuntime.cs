@@ -34,10 +34,6 @@ public class AOGMatchCandidate
     public float Quality;
 }
 
-/// <summary>
-/// Fair Elo-first matchmaking. No forced-loss pools, streak penalties, hidden resets or bad-team assignment.
-/// Match quality is determined by rating balance, uncertainty and role fit only.
-/// </summary>
 public class AOGFairMatchmakingRuntime : MonoBehaviour
 {
     public static AOGFairMatchmakingRuntime Instance { get; private set; }
@@ -130,11 +126,13 @@ public class AOGFairMatchmakingRuntime : MonoBehaviour
                 else red.Add(players[i]);
             }
 
-            float blueAvg = blue.Average(p => p.Elo);
-            float redAvg = red.Average(p => p.Elo);
+            float blueAvg = (float)blue.Average(p => p.Elo);
+            float redAvg = (float)red.Average(p => p.Elo);
             float eloGap = Mathf.Abs(blueAvg - redAvg);
             float rolePenalty = RolePenalty(blue) + RolePenalty(red);
-            float uncertaintyPenalty = Mathf.Abs(blue.Average(p => p.RatingDeviation) - red.Average(p => p.RatingDeviation)) * 0.08f;
+            float uncertaintyPenalty = Mathf.Abs(
+                (float)blue.Average(p => p.RatingDeviation) -
+                (float)red.Average(p => p.RatingDeviation)) * 0.08f;
             float score = eloGap + rolePenalty + uncertaintyPenalty;
 
             if (score < bestScore)
@@ -169,8 +167,8 @@ public class AOGFairMatchmakingRuntime : MonoBehaviour
     {
         if (match == null || match.Blue.Count == 0 || match.Red.Count == 0) return;
 
-        float blueAverage = match.Blue.Average(p => p.Elo);
-        float redAverage = match.Red.Average(p => p.Elo);
+        float blueAverage = (float)match.Blue.Average(p => p.Elo);
+        float redAverage = (float)match.Red.Average(p => p.Elo);
         float blueExpected = 1f / (1f + Mathf.Pow(10f, (redAverage - blueAverage) / 400f));
         float redExpected = 1f - blueExpected;
         float blueScore = winner == TeamType.Blue ? 1f : 0f;
@@ -219,10 +217,6 @@ public class AOGFairMatchmakingRuntime : MonoBehaviour
         player.RatingDeviation = Mathf.Max(45f, player.RatingDeviation * 0.985f);
         AOGRankedProgressionRuntime.Instance?.RecordRankedResult(player.PlayerId, player.Elo, won);
         AOGPlayerIntegrityRuntime.Instance?.RecordGoodStandingMatch(player.PlayerId);
-
-        // Win/loss streaks are profile display only. They never change matchmaking or base Elo gain/loss.
-        // Smurf acceleration only speeds positive rating convergence for high-confidence skill mismatch signals.
-        // It never assigns worse teammates, forces losses or suppresses normal players.
     }
 
     private static int CountBits(int value)

@@ -1,6 +1,6 @@
-using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine;
 
 public class MinionSpawner : MonoBehaviour
 {
@@ -17,47 +17,53 @@ public class MinionSpawner : MonoBehaviour
     public Transform[] botLaneWaypoints;
 
     [Header("Wave Settings")]
-    public float waveRate = 30f;
-    public float minionDelay = 0.15f;
-    public int maxMinionsPerTeam = 45;
-    public float sideSpacing = 1.2f;
-    public float backSpacing = 1.6f;
+    public float waveRate = 26f;
+    public float minionDelay = 0.30f;
+    public int maxMinionsPerTeam = 54;
+    public float sideSpacing = 1.0f;
+    public float backSpacing = 1.45f;
 
     [Header("Projectile")]
     public GameObject projectilePrefab;
 
-    private int waveNumber = 0;
+    private int waveNumber;
+    private Coroutine waveLoop;
 
-    void Start()
+    private void Start()
     {
-        InvokeRepeating(nameof(StartWave), 2f, waveRate);
+        waveLoop = StartCoroutine(WaveLoop());
+    }
+
+    private IEnumerator WaveLoop()
+    {
+        while (AOGMatchDirector.Instance == null || AOGMatchDirector.Instance.State != AOGMatchState.Playing)
+            yield return new WaitForSecondsRealtime(0.20f);
+
+        yield return new WaitForSeconds(1.5f);
+
+        while (true)
+        {
+            StartWave();
+            yield return new WaitForSeconds(waveRate);
+        }
     }
 
     [ContextMenu("Start Wave Now")]
-    void StartWave()
+    private void StartWave()
     {
-        if (blueMinionPrefab == null)
+        if (blueMinionPrefab == null || redMinionPrefab == null)
         {
-            Debug.LogError("Blue Minion Prefab boş.");
-            return;
-        }
-
-        if (redMinionPrefab == null)
-        {
-            Debug.LogError("Red Minion Prefab boş.");
+            Debug.LogError("Minion prefabs are not assigned.");
             return;
         }
 
         if (blueBaseSpawn == null || redBaseSpawn == null)
         {
-            Debug.LogError("BlueBaseSpawn veya RedBaseSpawn atanmamış.");
+            Debug.LogError("BlueBaseSpawn or RedBaseSpawn is missing.");
             return;
         }
 
-        if (CountMinions(MinionTeam.Blue) >= maxMinionsPerTeam)
-            return;
-
-        if (CountMinions(MinionTeam.Red) >= maxMinionsPerTeam)
+        if (CountMinions(MinionTeam.Blue) >= maxMinionsPerTeam || CountMinions(MinionTeam.Red) >= maxMinionsPerTeam)
             return;
 
         waveNumber++;
@@ -71,16 +77,20 @@ public class MinionSpawner : MonoBehaviour
         StartCoroutine(SpawnWave(redMinionPrefab, MinionTeam.Red, BuildRedPath(botLaneWaypoints), "Red Bot"));
     }
 
-    IEnumerator SpawnWave(GameObject prefab, MinionTeam team, Vector3[] path, string laneName)
+    private IEnumerator SpawnWave(GameObject prefab, MinionTeam team, Vector3[] path, string laneName)
     {
         SpawnMinion(prefab, team, path, MinionRole.Melee, -sideSpacing, 0f, laneName);
+        yield return new WaitForSeconds(minionDelay * 0.35f);
         SpawnMinion(prefab, team, path, MinionRole.Melee, 0f, 0f, laneName);
+        yield return new WaitForSeconds(minionDelay * 0.35f);
         SpawnMinion(prefab, team, path, MinionRole.Melee, sideSpacing, 0f, laneName);
 
         yield return new WaitForSeconds(minionDelay);
 
         SpawnMinion(prefab, team, path, MinionRole.Ranged, -sideSpacing, backSpacing, laneName);
+        yield return new WaitForSeconds(minionDelay * 0.35f);
         SpawnMinion(prefab, team, path, MinionRole.Ranged, 0f, backSpacing, laneName);
+        yield return new WaitForSeconds(minionDelay * 0.35f);
         SpawnMinion(prefab, team, path, MinionRole.Ranged, sideSpacing, backSpacing, laneName);
 
         if (waveNumber % 3 == 0)
@@ -90,180 +100,123 @@ public class MinionSpawner : MonoBehaviour
         }
     }
 
-    void SpawnMinion(
-        GameObject prefab,
-        MinionTeam team,
-        Vector3[] path,
-        MinionRole role,
-        float sideOffset,
-        float backOffset,
-        string laneName
-    )
+    private void SpawnMinion(GameObject prefab, MinionTeam team, Vector3[] path, MinionRole role, float sideOffset, float backOffset, string laneName)
     {
-        if (prefab == null)
-        {
-            Debug.LogError("Minion prefab boş.");
+        if (prefab == null || path == null || path.Length < 2)
             return;
-        }
-
-        if (path == null || path.Length < 2)
-        {
-            Debug.LogError("Path eksik: " + laneName + ". Waypointleri GameManager'a bağla.");
-            return;
-        }
 
         Vector3 spawnPoint = path[0];
         Vector3 firstTarget = path[1];
-
         Vector3 forward = firstTarget - spawnPoint;
         forward.y = 0f;
-
-        if (forward.magnitude <= 0.01f)
-        {
-            Debug.LogError("Spawn ve ilk waypoint aynı yerde: " + laneName);
+        if (forward.sqrMagnitude <= 0.0001f)
             return;
-        }
 
         forward.Normalize();
-
         Vector3 right = new Vector3(forward.z, 0f, -forward.x);
         Vector3 finalSpawn = spawnPoint + right * sideOffset - forward * backOffset;
-        finalSpawn.y = spawnPoint.y + 1.2f;
+        finalSpawn.y = spawnPoint.y + 0.15f;
 
         GameObject obj = Instantiate(prefab, finalSpawn, Quaternion.LookRotation(forward));
-        obj.name = team + "_" + laneName + "_" + role + "_Minion";
+        obj.name = team + "_" + laneName.Replace(" ", "_") + "_" + role + "_Minion";
 
-        Minion m = obj.GetComponent<Minion>();
+        Minion minion = obj.GetComponent<Minion>();
+        if (minion == null)
+            minion = obj.AddComponent<Minion>();
 
-        if (m == null)
-        {
-            m = obj.AddComponent<Minion>();
-            Debug.LogWarning("Prefab üzerinde Minion scripti yoktu, otomatik eklendi: " + prefab.name);
-        }
-AOGWorldHealthBar healthBar = obj.GetComponent<AOGWorldHealthBar>();
+        minion.team = team;
+        minion.role = role;
+        minion.path = path;
+        minion.currentPathIndex = 1;
+        minion.laneWidth = sideSpacing * 2.2f;
+        minion.laneOffset = sideOffset;
+        minion.projectilePrefab = projectilePrefab;
 
-if (healthBar == null)
-{
-    healthBar = obj.AddComponent<AOGWorldHealthBar>();
-}
-
-healthBar.barOffset = new Vector3(0f, 1.6f, 0f);
-healthBar.barWidth = 0.8f;
-healthBar.barHeight = 0.08f;
-        m.team = team;
-        m.role = role;
-        m.path = path;
-        m.currentPathIndex = 1;
-        m.laneWidth = 1.0f;
-        m.projectilePrefab = projectilePrefab;
-
-        Vector3 originalScale = obj.transform.localScale;
+        float waveScaling = 1f + Mathf.Clamp(waveNumber - 1, 0, 30) * 0.018f;
 
         if (role == MinionRole.Melee)
         {
-            m.maxHp = 65f;
-            m.hp = 65f;
-            m.damage = 8f;
-            m.attackRange = 2.2f;
-            m.attackRate = 1.1f;
-            m.speed = 3.1f;
-
-            obj.transform.localScale = originalScale * 1f;
+            minion.maxHp = 78f * waveScaling;
+            minion.damage = 9f * waveScaling;
+            minion.attackRange = 1.85f;
+            minion.towerAttackDistance = 2.55f;
+            minion.attackRate = 1.08f;
+            minion.speed = 3.15f;
+            minion.attackWindup = 0.26f;
         }
         else if (role == MinionRole.Ranged)
         {
-            m.maxHp = 45f;
-            m.hp = 45f;
-            m.damage = 7f;
-            m.attackRange = 6f;
-            m.attackRate = 1.3f;
-            m.speed = 2.9f;
-
-            obj.transform.localScale = originalScale * 0.9f;
+            minion.maxHp = 52f * waveScaling;
+            minion.damage = 8f * waveScaling;
+            minion.attackRange = 5.8f;
+            minion.towerAttackDistance = 5.9f;
+            minion.attackRate = 1.30f;
+            minion.speed = 3.0f;
+            minion.attackWindup = 0.34f;
         }
-        else if (role == MinionRole.Cannon)
+        else
         {
-            m.maxHp = 140f;
-            m.hp = 140f;
-            m.damage = 18f;
-            m.attackRange = 7f;
-            m.attackRate = 1.6f;
-            m.speed = 2.4f;
-
-            obj.transform.localScale = new Vector3(
-                originalScale.x * 1.6f,
-                originalScale.y * 1.2f,
-                originalScale.z * 1.6f
-            );
+            minion.maxHp = 185f * waveScaling;
+            minion.damage = 22f * waveScaling;
+            minion.attackRange = 6.6f;
+            minion.towerAttackDistance = 6.8f;
+            minion.attackRate = 1.62f;
+            minion.speed = 2.55f;
+            minion.attackWindup = 0.46f;
         }
 
-        Debug.Log("Spawn edildi: " + obj.name + " | Lane: " + laneName + " | Path Length: " + path.Length);
+        minion.hp = minion.maxHp;
+
+        AOGWorldHealthBar healthBar = obj.GetComponent<AOGWorldHealthBar>();
+        if (healthBar == null)
+            healthBar = obj.AddComponent<AOGWorldHealthBar>();
+        healthBar.barOffset = new Vector3(0f, role == MinionRole.Cannon ? 2.25f : 2.05f, 0f);
+        healthBar.barWidth = role == MinionRole.Cannon ? 1.35f : 1.05f;
+        healthBar.barHeight = 0.105f;
+
+        AOGMinionVisualFactory.Build(minion);
     }
 
-    Vector3[] BuildBluePath(Transform[] laneWaypoints)
+    private Vector3[] BuildBluePath(Transform[] laneWaypoints)
     {
         List<Vector3> path = new List<Vector3>();
-
         if (blueBaseSpawn == null || redBaseSpawn == null)
-        {
-            Debug.LogError("BlueBaseSpawn veya RedBaseSpawn atanmamış.");
             return path.ToArray();
-        }
 
         path.Add(blueBaseSpawn.position);
-
         if (laneWaypoints != null)
         {
-            foreach (Transform t in laneWaypoints)
-            {
-                if (t != null)
-                    path.Add(t.position);
-            }
+            foreach (Transform waypoint in laneWaypoints)
+                if (waypoint != null) path.Add(waypoint.position);
         }
-
         path.Add(redBaseSpawn.position);
-
         return path.ToArray();
     }
 
-    Vector3[] BuildRedPath(Transform[] laneWaypoints)
+    private Vector3[] BuildRedPath(Transform[] laneWaypoints)
     {
         List<Vector3> path = new List<Vector3>();
-
         if (blueBaseSpawn == null || redBaseSpawn == null)
-        {
-            Debug.LogError("BlueBaseSpawn veya RedBaseSpawn atanmamış.");
             return path.ToArray();
-        }
 
         path.Add(redBaseSpawn.position);
-
         if (laneWaypoints != null)
         {
             for (int i = laneWaypoints.Length - 1; i >= 0; i--)
-            {
-                if (laneWaypoints[i] != null)
-                    path.Add(laneWaypoints[i].position);
-            }
+                if (laneWaypoints[i] != null) path.Add(laneWaypoints[i].position);
         }
-
         path.Add(blueBaseSpawn.position);
-
         return path.ToArray();
     }
 
-    int CountMinions(MinionTeam team)
+    private static int CountMinions(MinionTeam team)
     {
-        Minion[] all = FindObjectsByType<Minion>(FindObjectsSortMode.None);
-
         int count = 0;
-
-        foreach (Minion m in all)
+        foreach (Minion minion in Minion.Active)
         {
-            if (m != null && m.team == team)
+            if (minion != null && minion.team == team && minion.hp > 0f)
                 count++;
         }
-
         return count;
     }
 }

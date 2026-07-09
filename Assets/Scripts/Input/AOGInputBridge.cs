@@ -151,6 +151,7 @@ public static class AOGInputBridge
             case KeyCode.E: return Key.E;
             case KeyCode.R: return Key.R;
             case KeyCode.S: return Key.S;
+            case KeyCode.P: return Key.P;
             case KeyCode.Space: return Key.Space;
             case KeyCode.LeftControl: return Key.LeftCtrl;
             case KeyCode.LeftShift: return Key.LeftShift;

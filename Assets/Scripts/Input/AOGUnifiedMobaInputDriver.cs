@@ -5,8 +5,8 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Runtime command driver for Lyra. It works with Legacy Input, New Input System or Both
-/// through AOGInputBridge and deliberately does not depend on EventSystem pointer blocking.
+/// Unified MOBA command driver for the active champion. Supports movement, target selection,
+/// attack chasing and attacks against minions, towers, nexuses and neutral bosses.
 /// </summary>
 [DefaultExecutionOrder(-50)]
 public class AOGUnifiedMobaInputDriver : MonoBehaviour
@@ -16,7 +16,7 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
     public float maxRayDistance = 1200f;
     public float stopDistance = 0.32f;
     public float attackRangeTolerance = 0.9f;
-    public bool leftClickAlsoMoves = true;
+    public bool leftClickAlsoMoves;
 
     private AOGCharacterStats stats;
     private ChampionPresentationController presentation;
@@ -24,6 +24,8 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
     private bool hasMoveTarget;
     private Minion targetMinion;
     private TowerHealth targetTower;
+    private AOGNexusCore targetNexus;
+    private AOGNeutralBossAI targetBoss;
     private float nextAttackTime;
     private Coroutine attackRoutine;
     private Vector3 lastPosition;
@@ -36,38 +38,49 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
         gameplayCamera = Camera.main;
         lastPosition = transform.position;
         moveTarget = transform.position;
+        RefreshAttackModifiers();
+        DisableConflictingControllers();
+    }
 
+    private void OnEnable()
+    {
+        if (stats == null) stats = GetComponent<AOGCharacterStats>();
+        if (presentation == null) presentation = GetComponent<ChampionPresentationController>();
+        RefreshAttackModifiers();
+    }
+
+    private void RefreshAttackModifiers()
+    {
+        attackModifiers.Clear();
         foreach (MonoBehaviour behaviour in GetComponents<MonoBehaviour>())
         {
             if (behaviour is IChampionBasicAttackModifier modifier)
                 attackModifiers.Add(modifier);
         }
-
-        DisableConflictingControllers();
     }
 
     private void DisableConflictingControllers()
     {
         AOGPlayerMOBAController oldMoba = GetComponent<AOGPlayerMOBAController>();
-        if (oldMoba != null)
-            oldMoba.enabled = false;
+        if (oldMoba != null) oldMoba.enabled = false;
 
         PlayerAutoAttack oldAuto = GetComponent<PlayerAutoAttack>();
-        if (oldAuto != null)
-            oldAuto.enabled = false;
+        if (oldAuto != null) oldAuto.enabled = false;
 
         PlayerAttack oldAttack = GetComponent<PlayerAttack>();
-        if (oldAttack != null)
-            oldAttack.enabled = false;
+        if (oldAttack != null) oldAttack.enabled = false;
 
         ChampionController oldChampionController = GetComponent<ChampionController>();
-        if (oldChampionController != null)
-            oldChampionController.enabled = false;
+        if (oldChampionController != null) oldChampionController.enabled = false;
     }
 
     private void Update()
     {
         if (stats == null || stats.IsDead)
+            return;
+
+        AOGActiveChampion marker = GetComponent<AOGActiveChampion>();
+        if (marker != null && !marker.IsActiveChampion)
             return;
 
         if (gameplayCamera == null || !gameplayCamera.isActiveAndEnabled)
@@ -125,14 +138,14 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
     {
         foreach (RaycastHit hit in hits)
         {
-            if (hit.collider == null || hit.collider.transform.IsChildOf(transform))
+            if (hit.collider == null || hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform))
                 continue;
 
             Minion minion = hit.collider.GetComponentInParent<Minion>();
             if (minion != null && minion.hp > 0f && minion.team != stats.team)
             {
+                ClearTargets();
                 targetMinion = minion;
-                targetTower = null;
                 hasMoveTarget = false;
                 return true;
             }
@@ -140,8 +153,26 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
             TowerHealth tower = hit.collider.GetComponentInParent<TowerHealth>();
             if (tower != null && tower.hp > 0f && tower.towerTeam != stats.team)
             {
+                ClearTargets();
                 targetTower = tower;
-                targetMinion = null;
+                hasMoveTarget = false;
+                return true;
+            }
+
+            AOGNexusCore nexus = hit.collider.GetComponentInParent<AOGNexusCore>();
+            if (nexus != null && !nexus.IsDestroyed && nexus.team != stats.team)
+            {
+                ClearTargets();
+                targetNexus = nexus;
+                hasMoveTarget = false;
+                return true;
+            }
+
+            AOGNeutralBossAI boss = hit.collider.GetComponentInParent<AOGNeutralBossAI>();
+            if (boss != null && !boss.IsDead)
+            {
+                ClearTargets();
+                targetBoss = boss;
                 hasMoveTarget = false;
                 return true;
             }
@@ -162,10 +193,13 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
                 continue;
 
             string n = t.gameObject.name.ToLowerInvariant();
-            if (n.Contains("hp_bar") || n.Contains("worldbar") || n.Contains("click_indicator") || n.Contains("readability"))
+            if (n.Contains("hp_bar") || n.Contains("worldbar") || n.Contains("click_indicator") || n.Contains("readability") || n.Contains("telegraph"))
                 continue;
 
-            if (hit.collider.GetComponentInParent<Minion>() != null || hit.collider.GetComponentInParent<TowerHealth>() != null)
+            if (hit.collider.GetComponentInParent<Minion>() != null ||
+                hit.collider.GetComponentInParent<TowerHealth>() != null ||
+                hit.collider.GetComponentInParent<AOGNexusCore>() != null ||
+                hit.collider.GetComponentInParent<AOGNeutralBossAI>() != null)
                 continue;
 
             point = hit.point;
@@ -182,8 +216,7 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
         moveTarget = point;
         moveTarget.y = transform.position.y;
         hasMoveTarget = true;
-        targetMinion = null;
-        targetTower = null;
+        ClearTargets();
 
         if (attackRoutine != null)
         {
@@ -191,7 +224,9 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
             attackRoutine = null;
         }
 
-        AOGMoveClickIndicator.Show(moveTarget, new Color(0.20f, 0.72f, 1f, 0.95f));
+        AOGActiveChampion marker = GetComponent<AOGActiveChampion>();
+        Color color = marker != null ? marker.accentColor : new Color(0.20f, 0.72f, 1f, 0.95f);
+        AOGMoveClickIndicator.Show(moveTarget, color);
     }
 
     private void HandleMovement()
@@ -227,22 +262,7 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
                 return;
             }
 
-            float distance = FlatDistance(transform.position, targetMinion.transform.position);
-            if (distance > stats.attackRange)
-            {
-                MoveToward(targetMinion.transform.position);
-                return;
-            }
-
-            Face(targetMinion.transform.position - transform.position);
-            if (Time.time >= nextAttackTime)
-            {
-                nextAttackTime = Time.time + stats.attackCooldown;
-                Minion locked = targetMinion;
-                presentation?.PlayBasicAttack();
-                float windup = presentation != null ? presentation.BasicAttackWindup : 0.2f;
-                attackRoutine = StartCoroutine(HitMinionAfterWindup(locked, windup));
-            }
+            AttackOrChase(targetMinion.transform, stats.attackRange, () => StartCoroutine(HitMinionAfterWindup(targetMinion, CurrentWindup())));
             return;
         }
 
@@ -254,39 +274,77 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
                 return;
             }
 
-            float allowed = stats.attackRange + 3f;
-            float distance = FlatDistance(transform.position, targetTower.transform.position);
-            if (distance > allowed)
+            float range = stats.attackRange + 2.8f;
+            TowerHealth locked = targetTower;
+            AttackOrChase(locked.transform, range, () => StartCoroutine(HitTowerAfterWindup(locked, CurrentWindup(), range)));
+            return;
+        }
+
+        if (targetNexus != null)
+        {
+            if (targetNexus.IsDestroyed || !targetNexus.gameObject.activeInHierarchy)
             {
-                MoveToward(targetTower.transform.position);
+                targetNexus = null;
                 return;
             }
 
-            Face(targetTower.transform.position - transform.position);
-            if (Time.time >= nextAttackTime)
-            {
-                nextAttackTime = Time.time + stats.attackCooldown;
-                TowerHealth locked = targetTower;
-                presentation?.PlayBasicAttack();
-                float windup = presentation != null ? presentation.BasicAttackWindup : 0.2f;
-                attackRoutine = StartCoroutine(HitTowerAfterWindup(locked, windup, allowed));
-            }
+            float range = stats.attackRange + 2.6f;
+            AOGNexusCore locked = targetNexus;
+            AttackOrChase(locked.transform, range, () => StartCoroutine(HitNexusAfterWindup(locked, CurrentWindup(), range)));
+            return;
         }
+
+        if (targetBoss != null)
+        {
+            if (targetBoss.IsDead || !targetBoss.gameObject.activeInHierarchy)
+            {
+                targetBoss = null;
+                return;
+            }
+
+            float range = stats.attackRange + 1.4f;
+            AOGNeutralBossAI locked = targetBoss;
+            AttackOrChase(locked.transform, range, () => StartCoroutine(HitBossAfterWindup(locked, CurrentWindup(), range)));
+        }
+    }
+
+    private void AttackOrChase(Transform target, float allowedRange, Func<Coroutine> beginAttack)
+    {
+        if (target == null)
+            return;
+
+        float distance = FlatDistance(transform.position, target.position);
+        if (distance > allowedRange)
+        {
+            MoveToward(target.position);
+            return;
+        }
+
+        hasMoveTarget = false;
+        Face(target.position - transform.position);
+        if (Time.time < nextAttackTime)
+            return;
+
+        nextAttackTime = Time.time + stats.attackCooldown;
+        presentation?.PlayBasicAttack();
+        attackRoutine = beginAttack();
+    }
+
+    private float CurrentWindup()
+    {
+        return presentation != null ? presentation.BasicAttackWindup : 0.2f;
     }
 
     private IEnumerator HitMinionAfterWindup(Minion target, float windup)
     {
-        if (windup > 0f)
-            yield return new WaitForSeconds(windup);
+        if (windup > 0f) yield return new WaitForSeconds(windup);
 
         if (target != null && target.hp > 0f && FlatDistance(transform.position, target.transform.position) <= stats.attackRange + attackRangeTolerance)
         {
             target.TakeDamage(stats.attackDamage, gameObject);
             foreach (IChampionBasicAttackModifier modifier in attackModifiers)
                 modifier?.OnBasicAttackHit(target);
-
-            presentation?.audioController?.PlayAttackImpact();
-            presentation?.SpawnImpactVfx(target.transform.position + Vector3.up * 0.8f);
+            PlayAttackImpact(target.transform.position + Vector3.up * 0.8f);
         }
 
         attackRoutine = null;
@@ -294,17 +352,47 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
 
     private IEnumerator HitTowerAfterWindup(TowerHealth target, float windup, float allowedRange)
     {
-        if (windup > 0f)
-            yield return new WaitForSeconds(windup);
+        if (windup > 0f) yield return new WaitForSeconds(windup);
 
         if (target != null && target.hp > 0f && FlatDistance(transform.position, target.transform.position) <= allowedRange + attackRangeTolerance)
         {
             target.TakeDamage(stats.attackDamage);
-            presentation?.audioController?.PlayAttackImpact();
-            presentation?.SpawnImpactVfx(target.transform.position + Vector3.up * 1.5f);
+            PlayAttackImpact(target.transform.position + Vector3.up * 1.5f);
         }
 
         attackRoutine = null;
+    }
+
+    private IEnumerator HitNexusAfterWindup(AOGNexusCore target, float windup, float allowedRange)
+    {
+        if (windup > 0f) yield return new WaitForSeconds(windup);
+
+        if (target != null && !target.IsDestroyed && FlatDistance(transform.position, target.transform.position) <= allowedRange + attackRangeTolerance)
+        {
+            target.TakeDamage(stats.attackDamage);
+            PlayAttackImpact(target.transform.position + Vector3.up * 2.2f);
+        }
+
+        attackRoutine = null;
+    }
+
+    private IEnumerator HitBossAfterWindup(AOGNeutralBossAI target, float windup, float allowedRange)
+    {
+        if (windup > 0f) yield return new WaitForSeconds(windup);
+
+        if (target != null && !target.IsDead && FlatDistance(transform.position, target.transform.position) <= allowedRange + attackRangeTolerance)
+        {
+            target.TakeDamage(stats.attackDamage, gameObject);
+            PlayAttackImpact(target.transform.position + Vector3.up * 1.5f);
+        }
+
+        attackRoutine = null;
+    }
+
+    private void PlayAttackImpact(Vector3 position)
+    {
+        presentation?.audioController?.PlayAttackImpact();
+        presentation?.SpawnImpactVfx(position);
     }
 
     private void MoveToward(Vector3 point)
@@ -332,8 +420,7 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
     private void StopAllActions()
     {
         hasMoveTarget = false;
-        targetMinion = null;
-        targetTower = null;
+        ClearTargets();
 
         if (attackRoutine != null)
         {
@@ -342,6 +429,14 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
         }
 
         presentation?.SetPlanarVelocity(Vector3.zero);
+    }
+
+    private void ClearTargets()
+    {
+        targetMinion = null;
+        targetTower = null;
+        targetNexus = null;
+        targetBoss = null;
     }
 
     private void UpdateAnimationVelocity()
@@ -368,25 +463,33 @@ public static class AOGUnifiedMobaInputBootstrap
     {
         SceneManager.sceneLoaded -= OnSceneLoaded;
         SceneManager.sceneLoaded += OnSceneLoaded;
-        AttachToLyra();
+        AttachToCandidates();
     }
 
     private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        AttachToLyra();
+        AttachToCandidates();
     }
 
-    private static void AttachToLyra()
+    private static void AttachToCandidates()
     {
-        AOGPlayerMOBAController[] players = UnityEngine.Object.FindObjectsByType<AOGPlayerMOBAController>(FindObjectsSortMode.None);
+        AOGPlayerMOBAController[] players = UnityEngine.Object.FindObjectsByType<AOGPlayerMOBAController>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         foreach (AOGPlayerMOBAController player in players)
         {
-            if (player == null || !player.gameObject.name.ToLowerInvariant().Contains("lyra"))
+            if (player == null)
                 continue;
 
-            if (player.GetComponent<AOGUnifiedMobaInputDriver>() == null)
-                player.gameObject.AddComponent<AOGUnifiedMobaInputDriver>();
-            return;
+            AOGActiveChampion marker = player.GetComponent<AOGActiveChampion>();
+            bool legacyLyra = player.gameObject.name.ToLowerInvariant().Contains("lyra");
+            if (marker == null && !legacyLyra)
+                continue;
+
+            AOGUnifiedMobaInputDriver driver = player.GetComponent<AOGUnifiedMobaInputDriver>();
+            if (driver == null)
+                driver = player.gameObject.AddComponent<AOGUnifiedMobaInputDriver>();
+
+            if (marker != null)
+                driver.enabled = marker.IsActiveChampion;
         }
     }
 }

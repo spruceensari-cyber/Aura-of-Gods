@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 [InitializeOnLoad]
 public static class AOGGameplayVerticalSliceAutoSetup
 {
-    private const string SessionKey = "AOG.GameplayVerticalSliceAutoSetup.v2";
+    private const string SessionKey = "AOG.GameplayVerticalSliceAutoSetup.v3";
 
     static AOGGameplayVerticalSliceAutoSetup()
     {
@@ -16,7 +16,7 @@ public static class AOGGameplayVerticalSliceAutoSetup
         EditorApplication.delayCall += RunOncePerSession;
     }
 
-    [MenuItem("Aura of Gods/Setup Lyra Gameplay Camera")]
+    [MenuItem("Aura of Gods/Setup MOBA Gameplay Camera")]
     public static void SetupCurrentScene()
     {
         Scene scene = SceneManager.GetActiveScene();
@@ -88,24 +88,25 @@ public static class AOGGameplayVerticalSliceAutoSetup
             changed = true;
         }
 
-        Transform lyra = FindLyra(scene);
-        if (lyra != null && controller.target != lyra)
+        Transform initialChampion = FindInitialChampion(scene);
+        if (initialChampion != null && controller.target != initialChampion)
         {
-            controller.target = lyra;
+            controller.target = initialChampion;
             changed = true;
         }
 
-        changed |= SetIfDifferent(ref controller.pitch, 57f);
+        changed |= SetIfDifferent(ref controller.pitch, 58f);
         changed |= SetIfDifferent(ref controller.yaw, 45f);
-        changed |= SetIfDifferent(ref controller.fieldOfView, 48f);
-        changed |= SetIfDifferent(ref controller.defaultZoom, 28f);
-        changed |= SetIfDifferent(ref controller.minZoom, 16f);
-        changed |= SetIfDifferent(ref controller.maxZoom, 46f);
-        changed |= SetIfDifferent(ref controller.zoomStep, 3.2f);
-        changed |= SetIfDifferent(ref controller.maxPanDistanceFromTarget, 36f);
-        changed |= SetIfDifferent(ref controller.forwardFramingBias, 0.6f);
-        changed |= SetIfDifferent(ref controller.targetLookAhead, 0.10f);
-        changed |= SetIfDifferent(ref controller.maxLookAheadDistance, 1.6f);
+        changed |= SetIfDifferent(ref controller.fieldOfView, 50f);
+        changed |= SetIfDifferent(ref controller.defaultZoom, 32f);
+        changed |= SetIfDifferent(ref controller.minZoom, 18f);
+        changed |= SetIfDifferent(ref controller.maxZoom, 65f);
+        changed |= SetIfDifferent(ref controller.zoomStep, 4.2f);
+        changed |= SetIfDifferent(ref controller.edgePanSpeed, 20f);
+        changed |= SetIfDifferent(ref controller.maxPanDistanceFromTarget, 46f);
+        changed |= SetIfDifferent(ref controller.forwardFramingBias, 0.35f);
+        changed |= SetIfDifferent(ref controller.targetLookAhead, 0.08f);
+        changed |= SetIfDifferent(ref controller.maxLookAheadDistance, 1.4f);
 
         if (!controller.autoFindLyra)
         {
@@ -125,9 +126,15 @@ public static class AOGGameplayVerticalSliceAutoSetup
             changed = true;
         }
 
-        if (!Mathf.Approximately(camera.fieldOfView, 48f))
+        if (!Mathf.Approximately(camera.fieldOfView, 50f))
         {
-            camera.fieldOfView = 48f;
+            camera.fieldOfView = 50f;
+            changed = true;
+        }
+
+        if (camera.farClipPlane < 900f)
+        {
+            camera.farClipPlane = 900f;
             changed = true;
         }
 
@@ -214,11 +221,11 @@ public static class AOGGameplayVerticalSliceAutoSetup
         return null;
     }
 
-    private static Transform FindLyra(Scene scene)
+    private static Transform FindInitialChampion(Scene scene)
     {
         foreach (GameObject root in scene.GetRootGameObjects())
         {
-            Transform result = FindLyraRecursive(root.transform);
+            Transform result = FindChampionRecursive(root.transform);
             if (result != null)
                 return result;
         }
@@ -226,17 +233,19 @@ public static class AOGGameplayVerticalSliceAutoSetup
         return null;
     }
 
-    private static Transform FindLyraRecursive(Transform current)
+    private static Transform FindChampionRecursive(Transform current)
     {
         if (current == null)
             return null;
 
-        if (current.gameObject.name.ToLowerInvariant().Contains("lyra") && current.GetComponent<AOGPlayerMOBAController>() != null)
+        string lower = current.gameObject.name.ToLowerInvariant();
+        bool candidateName = lower.Contains("lyra") || lower.Contains("kaelith") || lower.Contains("player");
+        if (candidateName && current.GetComponent<AOGPlayerMOBAController>() != null)
             return current;
 
         foreach (Transform child in current)
         {
-            Transform found = FindLyraRecursive(child);
+            Transform found = FindChampionRecursive(child);
             if (found != null)
                 return found;
         }

@@ -60,7 +60,7 @@ public class AOGRespawnSystemRuntime : MonoBehaviour
         Champion[] champions = Resources.FindObjectsOfTypeAll<Champion>();
         foreach (Champion champion in champions)
         {
-            if (champion == null || subscribed.Contains(champion))
+            if (champion == null || !champion.gameObject.scene.IsValid() || subscribed.Contains(champion))
                 continue;
 
             subscribed.Add(champion);
@@ -81,6 +81,9 @@ public class AOGRespawnSystemRuntime : MonoBehaviour
     {
         float delay = baseRespawnSeconds + champion.Level * perLevelRespawnSeconds;
         yield return new WaitForSecondsRealtime(delay);
+
+        if (champion == null)
+            yield break;
 
         Vector3 spawn = ResolveSpawnPoint(champion);
         champion.transform.position = spawn;

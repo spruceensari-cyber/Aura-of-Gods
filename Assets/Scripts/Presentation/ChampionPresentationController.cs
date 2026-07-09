@@ -15,6 +15,7 @@ public class ChampionPresentationController : MonoBehaviour
     private int lastAttackVariant = -1;
     private float lastHitReactionTime;
     private bool dead;
+    private AOGMobaCameraController cameraController;
 
     public float BasicAttackWindup => profile != null ? profile.basicAttackWindup : 0.22f;
     public float BasicAttackRecovery => profile != null ? profile.basicAttackRecovery : 0.18f;
@@ -33,6 +34,9 @@ public class ChampionPresentationController : MonoBehaviour
 
         if (audioController == null)
             audioController = GetComponent<ChampionAudioController>();
+
+        if (cameraController == null && Camera.main != null)
+            cameraController = Camera.main.GetComponent<AOGMobaCameraController>();
     }
 
     public void SetProfile(ChampionPresentationProfile newProfile)
@@ -129,6 +133,7 @@ public class ChampionPresentationController : MonoBehaviour
         SetWeaponTrail(false);
         SetTrigger(ProfileString(p => p.deathTrigger, "Death"));
         audioController?.PlayDeath();
+        GetCameraController()?.AddRandomImpulse(0.34f);
     }
 
     public void PlayRecall()
@@ -142,28 +147,32 @@ public class ChampionPresentationController : MonoBehaviour
 
     public void SpawnImpactVfx(Vector3 worldPosition, bool empowered = false, bool ultimate = false)
     {
-        if (profile == null)
-            return;
+        GameObject prefab = null;
+        if (profile != null)
+        {
+            prefab = ultimate
+                ? profile.ultimateImpactVfx
+                : empowered
+                    ? profile.empoweredImpactVfx
+                    : profile.basicImpactVfx;
+        }
 
-        GameObject prefab = ultimate
-            ? profile.ultimateImpactVfx
-            : empowered
-                ? profile.empoweredImpactVfx
-                : profile.basicImpactVfx;
+        if (prefab != null)
+        {
+            GameObject instance = Instantiate(prefab, worldPosition, Quaternion.identity);
+            Destroy(instance, 3f);
+        }
 
-        if (prefab == null)
-            return;
-
-        GameObject instance = Instantiate(prefab, worldPosition, Quaternion.identity);
-        Destroy(instance, 3f);
+        float impulse = ultimate ? 0.38f : empowered ? 0.22f : 0.10f;
+        GetCameraController()?.AddRandomImpulse(impulse);
     }
 
     public void SpawnAbilityImpactVfx(Vector3 worldPosition, int slot)
     {
-        if (profile == null)
-            return;
+        GameObject prefab = null;
+        if (profile != null)
+            prefab = slot == 3 ? profile.ultimateImpactVfx : profile.abilityImpactVfx;
 
-        GameObject prefab = slot == 3 ? profile.ultimateImpactVfx : profile.abilityImpactVfx;
         if (prefab != null)
         {
             GameObject instance = Instantiate(prefab, worldPosition, Quaternion.identity);
@@ -171,6 +180,7 @@ public class ChampionPresentationController : MonoBehaviour
         }
 
         audioController?.PlayAbilityImpact(Mathf.Clamp(slot, 0, 3));
+        GetCameraController()?.AddRandomImpulse(slot == 3 ? 0.40f : 0.18f);
     }
 
     public void SetWeaponTrail(bool enabled)
@@ -179,7 +189,6 @@ public class ChampionPresentationController : MonoBehaviour
             weaponTrailObject.SetActive(enabled);
     }
 
-    // Animation Event hooks. These are presentation-only; gameplay damage remains authoritative in combat code.
     public void AE_Footstep() => audioController?.PlayFootstep();
     public void AE_AttackWhoosh() => audioController?.PlayAttackWhoosh();
     public void AE_AttackImpact() => audioController?.PlayAttackImpact();
@@ -189,6 +198,14 @@ public class ChampionPresentationController : MonoBehaviour
     public void AE_WCast() => audioController?.PlayAbilityCast(1);
     public void AE_ECast() => audioController?.PlayAbilityCast(2);
     public void AE_RCast() => audioController?.PlayAbilityCast(3);
+
+    private AOGMobaCameraController GetCameraController()
+    {
+        if (cameraController == null && Camera.main != null)
+            cameraController = Camera.main.GetComponent<AOGMobaCameraController>();
+
+        return cameraController;
+    }
 
     private string ProfileString(System.Func<ChampionPresentationProfile, string> selector, string fallback)
     {

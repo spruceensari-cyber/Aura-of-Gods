@@ -1,23 +1,23 @@
 using UnityEngine;
-using System.Collections.Generic;
 
 /// <summary>
-/// Advanced AI for bot champions - positioning, ability usage, team fights
+/// Role-aware combat bot foundation with health-state decisions, real ability casting and basic farming pressure.
 /// </summary>
 public class BotChampionAI : MonoBehaviour
 {
     private Champion champion;
-    private ChampionController controller;
     private float decisionTimer;
-    [SerializeField] private float decisionInterval = 1f;
+    private float nextAbilityThinkTime;
+
+    [SerializeField] private float decisionInterval = 0.65f;
     [SerializeField] private float aggroRange = 15f;
-    [SerializeField] private float safeDistance = 8f;
-    
+    [SerializeField] private float retreatHealthPercent = 0.30f;
+    [SerializeField] private float abilityThinkInterval = 0.45f;
+
     private Champion nearestEnemy;
-    private Vector3 strategicPosition;
     private AIState currentState = AIState.Idle;
-    
-    enum AIState
+
+    private enum AIState
     {
         Idle,
         Farming,
@@ -25,56 +25,47 @@ public class BotChampionAI : MonoBehaviour
         Retreating,
         Teamfighting
     }
-    
+
     void Start()
     {
         champion = GetComponent<Champion>();
-        controller = GetComponent<ChampionController>();
         decisionTimer = decisionInterval;
     }
-    
+
     void Update()
     {
+        if (champion == null || !champion.IsAlive)
+            return;
+
         decisionTimer -= Time.deltaTime;
-        
-        if (decisionTimer <= 0)
+        if (decisionTimer <= 0f)
         {
             MakeDecision();
             decisionTimer = decisionInterval;
         }
-        
+
         ExecuteState();
     }
-    
+
     private void MakeDecision()
     {
         nearestEnemy = FindNearestEnemy();
-        
+
+        if (champion.HealthPercent < retreatHealthPercent)
+        {
+            currentState = AIState.Retreating;
+            return;
+        }
+
         if (nearestEnemy != null)
         {
-            float healthPercent = champion.CurrentHealth / 500f; // Placeholder max health
-            float distanceToEnemy = Vector3.Distance(transform.position, nearestEnemy.transform.position);
-            
-            // Decision logic
-            if (healthPercent < 0.3f)
-            {
-                currentState = AIState.Retreating;
-            }
-            else if (distanceToEnemy < aggroRange)
-            {
-                currentState = AIState.Engaging;
-            }
-            else
-            {
-                currentState = AIState.Farming;
-            }
+            currentState = AIState.Engaging;
+            return;
         }
-        else
-        {
-            currentState = AIState.Farming;
-        }
+
+        currentState = AIState.Farming;
     }
-    
+
     private void ExecuteState()
     {
         switch (currentState)
@@ -90,80 +81,140 @@ public class BotChampionAI : MonoBehaviour
                 break;
         }
     }
-    
+
     private void EngageEnemy()
     {
-        if (nearestEnemy == null) return;
-        
-        // Move towards enemy
-        Vector3 direction = (nearestEnemy.transform.position - transform.position).normalized;
-        transform.position += direction * 3f * Time.deltaTime;
-        
-        // Cast ability if in range
-        if (Random.value > 0.7f && champion.HasMana(50f))
+        if (nearestEnemy == null || !nearestEnemy.IsAlive)
+            return;
+
+        Vector3 toEnemy = nearestEnemy.transform.position - transform.position;
+        float distance = toEnemy.magnitude;
+        Vector3 direction = distance > 0.01f ? toEnemy / distance : Vector3.zero;
+
+        ChampionAbility[] abilities = GetComponents<ChampionAbility>();
+        float preferredRange = 3.5f;
+        foreach (ChampionAbility ability in abilities)
         {
-            // Random ability cast (simplified)
-            champion.SpendMana(50f);
+            if (ability != null)
+                preferredRange = Mathf.Max(preferredRange, Mathf.Min(ability.Range * 0.75f, 9f));
+        }
+
+        if (distance > preferredRange)
+            transform.position += direction * champion.MovementSpeed * 0.72f * Time.deltaTime;
+        else if (distance < 2.2f)
+            transform.position -= direction * champion.MovementSpeed * 0.35f * Time.deltaTime;
+
+        Face(nearestEnemy.transform.position);
+
+        if (Time.time >= nextAbilityThinkTime)
+        {
+            TryCastBestAvailableAbility(abilities, distance);
+            nextAbilityThinkTime = Time.time + abilityThinkInterval;
         }
     }
-    
-    private void Retreat()
+
+    private void TryCastBestAvailableAbility(ChampionAbility[] abilities, float distance)
     {
-        // Move away from nearest enemy
-        if (nearestEnemy != null)
+        ChampionAbility best = null;
+        float bestScore = float.MinValue;
+
+        foreach (ChampionAbility ability in abilities)
         {
-            Vector3 awayDirection = (transform.position - nearestEnemy.transform.position).normalized;
-            transform.position += awayDirection * 5f * Time.deltaTime;
-        }
-    }
-    
-    private void FarmMinions()
-    {
-        // Simple farming behavior - move towards minions
-        CombatUnit[] units = FindObjectsByType<CombatUnit>(FindObjectsSortMode.None);
-        
-        CombatUnit nearestMinion = null;
-        float minDistance = Mathf.Infinity;
-        
-        foreach (CombatUnit unit in units)
-        {
-            if (unit.UnitType == UnitType.Minion && unit.UnitTeam != champion.Team)
+            if (ability == null || !ability.CanCast())
+                continue;
+            if (distance > ability.Range + ability.AOERadius)
+                continue;
+
+            float readinessBias = ability.Key == AbilityKey.R ? 3.5f : 1f;
+            float rangeFit = 1f - Mathf.Clamp01(Mathf.Abs(distance - Mathf.Max(1f, ability.Range * 0.65f)) / Mathf.Max(1f, ability.Range));
+            float score = readinessBias + rangeFit + Random.Range(0f, 0.8f);
+
+            if (score > bestScore)
             {
-                float dist = Vector3.Distance(transform.position, unit.transform.position);
-                if (dist < minDistance)
-                {
-                    minDistance = dist;
-                    nearestMinion = unit;
-                }
+                bestScore = score;
+                best = ability;
             }
         }
-        
-        if (nearestMinion != null && minDistance < 20f)
-        {
-            Vector3 direction = (nearestMinion.transform.position - transform.position).normalized;
-            transform.position += direction * 2.5f * Time.deltaTime;
-        }
+
+        if (best == null)
+            return;
+
+        Champion targetChampion = best.Type == AbilityType.SingleTarget ? nearestEnemy : null;
+        best.Cast(nearestEnemy.transform.position, targetChampion);
     }
-    
+
+    private void Retreat()
+    {
+        if (nearestEnemy == null)
+        {
+            currentState = AIState.Farming;
+            return;
+        }
+
+        Vector3 away = transform.position - nearestEnemy.transform.position;
+        away.y = 0f;
+        if (away.sqrMagnitude > 0.01f)
+            transform.position += away.normalized * champion.MovementSpeed * Time.deltaTime;
+    }
+
+    private void FarmMinions()
+    {
+        CombatUnit[] units = FindObjectsByType<CombatUnit>(FindObjectsSortMode.None);
+        CombatUnit nearestMinion = null;
+        float minDistance = Mathf.Infinity;
+
+        foreach (CombatUnit unit in units)
+        {
+            if (unit == null || !unit.IsAlive || unit.UnitType != UnitType.Minion || unit.UnitTeam == champion.Team)
+                continue;
+
+            float distance = Vector3.Distance(transform.position, unit.transform.position);
+            if (distance < minDistance)
+            {
+                minDistance = distance;
+                nearestMinion = unit;
+            }
+        }
+
+        if (nearestMinion == null || minDistance >= 24f)
+            return;
+
+        Vector3 direction = nearestMinion.transform.position - transform.position;
+        direction.y = 0f;
+        if (direction.sqrMagnitude > 0.01f)
+            transform.position += direction.normalized * champion.MovementSpeed * 0.55f * Time.deltaTime;
+    }
+
     private Champion FindNearestEnemy()
     {
         Champion[] allChampions = FindObjectsByType<Champion>(FindObjectsSortMode.None);
         Champion nearest = null;
         float minDistance = Mathf.Infinity;
-        
-        foreach (Champion champ in allChampions)
+
+        foreach (Champion other in allChampions)
         {
-            if (champ.Team != champion.Team)
+            if (other == null || other == champion || !other.IsAlive || other.Team == champion.Team)
+                continue;
+
+            float distance = Vector3.Distance(transform.position, other.transform.position);
+            if (distance < minDistance && distance < aggroRange)
             {
-                float dist = Vector3.Distance(transform.position, champ.transform.position);
-                if (dist < minDistance && dist < aggroRange)
-                {
-                    minDistance = dist;
-                    nearest = champ;
-                }
+                minDistance = distance;
+                nearest = other;
             }
         }
-        
+
         return nearest;
+    }
+
+    private void Face(Vector3 point)
+    {
+        Vector3 direction = point - transform.position;
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 0.01f)
+            return;
+
+        Quaternion target = Quaternion.LookRotation(direction.normalized);
+        transform.rotation = Quaternion.Slerp(transform.rotation, target, Time.deltaTime * 8f);
     }
 }

@@ -74,6 +74,10 @@ public class AOGFairMatchmakingRuntime : MonoBehaviour
     {
         if (profile == null || string.IsNullOrWhiteSpace(profile.PlayerId)) return;
         if (queue.Exists(q => q.Profile.PlayerId == profile.PlayerId)) return;
+
+        AOGIntegrityProfile integrity = AOGPlayerIntegrityRuntime.Instance?.GetOrCreate(profile.PlayerId);
+        if (integrity != null && integrity.IsRestricted) return;
+
         queue.Add(new AOGQueueEntry { Profile = profile, QueueSeconds = 0f });
     }
 
@@ -189,9 +193,17 @@ public class AOGFairMatchmakingRuntime : MonoBehaviour
 
     private void ApplySingleResult(AOGPlayerRatingProfile player, float score, float expected)
     {
-        player.Elo += Mathf.RoundToInt(eloKFactor * (score - expected));
+        float baseDelta = eloKFactor * (score - expected);
+        float acceleration = 1f;
 
-        if (score > 0.5f)
+        if (baseDelta > 0f && AOGSmurfSignalRuntime.Instance != null)
+            acceleration = AOGSmurfSignalRuntime.Instance.GetRatingAccelerationMultiplier(player.PlayerId);
+
+        int eloDelta = Mathf.RoundToInt(baseDelta * acceleration);
+        player.Elo = Mathf.Max(0, player.Elo + eloDelta);
+
+        bool won = score > 0.5f;
+        if (won)
         {
             player.Wins++;
             player.CurrentWinStreak++;
@@ -205,8 +217,12 @@ public class AOGFairMatchmakingRuntime : MonoBehaviour
         }
 
         player.RatingDeviation = Mathf.Max(45f, player.RatingDeviation * 0.985f);
-        // Win/loss streaks are tracked for profile display only. They never change matchmaking or Elo gain/loss.
-        // There is intentionally no 10-win reset and no hidden forced-loss queue.
+        AOGRankedProgressionRuntime.Instance?.RecordRankedResult(player.PlayerId, player.Elo, won);
+        AOGPlayerIntegrityRuntime.Instance?.RecordGoodStandingMatch(player.PlayerId);
+
+        // Win/loss streaks are profile display only. They never change matchmaking or base Elo gain/loss.
+        // Smurf acceleration only speeds positive rating convergence for high-confidence skill mismatch signals.
+        // It never assigns worse teammates, forces losses or suppresses normal players.
     }
 
     private static int CountBits(int value)

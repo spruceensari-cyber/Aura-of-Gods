@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class AOGPlayerMOBAController : MonoBehaviour
@@ -19,13 +20,12 @@ public class AOGPlayerMOBAController : MonoBehaviour
     private AOGCharacterStats stats;
     private Vector3 moveTarget;
     private bool hasMoveTarget;
-
     private Minion targetMinion;
     private TowerHealth targetTower;
-
     private float nextAttackTime;
     private Coroutine attackRoutine;
     private Vector3 lastFramePosition;
+    private readonly List<IChampionBasicAttackModifier> basicAttackModifiers = new List<IChampionBasicAttackModifier>();
 
     private void Start()
     {
@@ -53,8 +53,20 @@ public class AOGPlayerMOBAController : MonoBehaviour
             presentation.audioController = audio;
         }
 
+        CacheBasicAttackModifiers();
         moveTarget = transform.position;
         lastFramePosition = transform.position;
+    }
+
+    private void CacheBasicAttackModifiers()
+    {
+        basicAttackModifiers.Clear();
+        MonoBehaviour[] behaviours = GetComponents<MonoBehaviour>();
+        foreach (MonoBehaviour behaviour in behaviours)
+        {
+            if (behaviour is IChampionBasicAttackModifier modifier)
+                basicAttackModifiers.Add(modifier);
+        }
     }
 
     private void Update()
@@ -77,7 +89,6 @@ public class AOGPlayerMOBAController : MonoBehaviour
             return;
 
         Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
-
         if (!Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
             return;
 
@@ -192,6 +203,10 @@ public class AOGPlayerMOBAController : MonoBehaviour
             if (distance <= stats.attackRange + attackRangeTolerance)
             {
                 lockedTarget.TakeDamage(stats.attackDamage, gameObject);
+
+                foreach (IChampionBasicAttackModifier modifier in basicAttackModifiers)
+                    modifier?.OnBasicAttackHit(lockedTarget);
+
                 if (presentation != null)
                 {
                     presentation.audioController?.PlayAttackImpact();
@@ -261,15 +276,15 @@ public class AOGPlayerMOBAController : MonoBehaviour
         Minion closest = null;
         float closestDistance = Mathf.Infinity;
 
-        foreach (Minion m in minions)
+        foreach (Minion minion in minions)
         {
-            if (m == null || !m.gameObject.activeInHierarchy || m.hp <= 0f || m.team == stats.team)
+            if (minion == null || !minion.gameObject.activeInHierarchy || minion.hp <= 0f || minion.team == stats.team)
                 continue;
 
-            float distance = FlatDistance(transform.position, m.transform.position);
+            float distance = FlatDistance(transform.position, minion.transform.position);
             if (distance <= range && distance < closestDistance)
             {
-                closest = m;
+                closest = minion;
                 closestDistance = distance;
             }
         }

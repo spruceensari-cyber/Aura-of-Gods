@@ -40,8 +40,21 @@ public static class ChampionRosterRuntimeInstaller
 
             presentation.audioController = audio;
 
-            if (profiles.Length > 0 && presentation.profile == null)
-                presentation.SetProfile(profiles[i % profiles.Length]);
+            ChampionArchetype archetype = ChampionArchetype.Duelist;
+            if (profiles.Length > 0)
+            {
+                ChampionPresentationProfile selected = profiles[i % profiles.Length];
+                archetype = selected.archetype;
+
+                if (presentation.profile == null)
+                    presentation.SetProfile(selected);
+            }
+            else if (presentation.profile != null)
+            {
+                archetype = presentation.profile.archetype;
+            }
+
+            audio.ConfigureProceduralFallback(archetype);
         }
     }
 }

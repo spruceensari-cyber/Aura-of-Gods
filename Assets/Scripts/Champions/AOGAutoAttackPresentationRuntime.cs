@@ -30,6 +30,10 @@ public class AOGAutoAttackPresentationRuntime : MonoBehaviour
     {
         attackSide *= -1;
         attackTimer = 0.34f;
+
+        AOGPremiumMeleeSwingRuntime swing = GetComponent<AOGPremiumMeleeSwingRuntime>();
+        if (swing != null)
+            swing.PlaySwing();
     }
 
     public void PlayHit()

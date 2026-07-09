@@ -113,12 +113,17 @@ public class AOGOriginalRosterBootstrapRuntime : MonoBehaviour
     private static void InstallHero(GameObject go, AOGOriginalHeroId id)
     {
         if (go == null) return;
+
         AOGOriginalHeroKitRuntime kit = go.AddComponent<AOGOriginalHeroKitRuntime>();
         kit.Initialize(id);
 
         AOGHeroMotionAnimator motion = go.GetComponent<AOGHeroMotionAnimator>();
         if (motion == null) motion = go.AddComponent<AOGHeroMotionAnimator>();
         motion.Initialize(id);
+
+        AOGHeroVisualIdentityRuntime visual = go.GetComponent<AOGHeroVisualIdentityRuntime>();
+        if (visual == null) visual = go.AddComponent<AOGHeroVisualIdentityRuntime>();
+        visual.Initialize(id);
 
         ChampionController controller = go.GetComponent<ChampionController>();
         if (controller != null) controller.RefreshAbilities();

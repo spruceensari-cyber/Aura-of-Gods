@@ -11,30 +11,30 @@ public class AOGMobaCameraController : MonoBehaviour
     public KeyCode focusKey = KeyCode.Space;
 
     [Header("MOBA Framing")]
-    [Range(35f, 75f)] public float pitch = 56f;
+    [Range(35f, 75f)] public float pitch = 57f;
     [Range(-180f, 180f)] public float yaw = 45f;
-    [Range(30f, 60f)] public float fieldOfView = 40f;
-    public float defaultZoom = 19f;
-    public float minZoom = 13f;
-    public float maxZoom = 27f;
-    public float forwardFramingBias = 1.6f;
+    [Range(30f, 60f)] public float fieldOfView = 48f;
+    public float defaultZoom = 28f;
+    public float minZoom = 16f;
+    public float maxZoom = 46f;
+    public float forwardFramingBias = 0.6f;
 
     [Header("Follow")]
     public float followSmoothTime = 0.10f;
     public float rotationSmoothSpeed = 14f;
-    public float targetLookAhead = 0.16f;
-    public float maxLookAheadDistance = 2.2f;
+    public float targetLookAhead = 0.10f;
+    public float maxLookAheadDistance = 1.6f;
 
     [Header("Free Pan")]
     public bool edgePanEnabled = true;
     [Range(2f, 60f)] public float edgeBorderPixels = 14f;
-    public float edgePanSpeed = 16f;
+    public float edgePanSpeed = 18f;
     public float middleDragSpeed = 0.035f;
-    public float maxPanDistanceFromTarget = 28f;
+    public float maxPanDistanceFromTarget = 36f;
     public float panReturnSpeed = 12f;
 
     [Header("Zoom")]
-    public float zoomStep = 2.2f;
+    public float zoomStep = 3.2f;
     public float zoomSmoothTime = 0.08f;
 
     [Header("Impact Feel")]
@@ -50,7 +50,7 @@ public class AOGMobaCameraController : MonoBehaviour
     private Vector3 targetLastPosition;
     private Vector3 targetPlanarVelocity;
     private Vector3 impulseOffset;
-    private Vector3 dragStartMouse;
+    private Vector2 dragStartMouse;
     private bool dragging;
     private float nextTargetSearchTime;
     private bool snappedOnce;
@@ -61,7 +61,7 @@ public class AOGMobaCameraController : MonoBehaviour
         controlledCamera.orthographic = false;
         controlledCamera.fieldOfView = fieldOfView;
         controlledCamera.nearClipPlane = Mathf.Min(controlledCamera.nearClipPlane, 0.15f);
-        controlledCamera.farClipPlane = Mathf.Max(controlledCamera.farClipPlane, 600f);
+        controlledCamera.farClipPlane = Mathf.Max(controlledCamera.farClipPlane, 700f);
 
         currentZoom = Mathf.Clamp(defaultZoom, minZoom, maxZoom);
         desiredZoom = currentZoom;
@@ -167,7 +167,7 @@ public class AOGMobaCameraController : MonoBehaviour
 
     private void HandleZoomInput()
     {
-        float scroll = Input.mouseScrollDelta.y;
+        float scroll = AOGInputBridge.ScrollDelta.y;
         if (Mathf.Abs(scroll) < 0.01f)
             return;
 
@@ -181,21 +181,22 @@ public class AOGMobaCameraController : MonoBehaviour
 
         bool pointerOverUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
 
-        if (Input.GetMouseButtonDown(2))
+        if (AOGInputBridge.MiddlePressedThisFrame())
         {
             dragging = true;
-            dragStartMouse = Input.mousePosition;
+            dragStartMouse = AOGInputBridge.PointerPosition;
         }
 
-        if (Input.GetMouseButtonUp(2))
+        if (AOGInputBridge.MiddleReleasedThisFrame())
             dragging = false;
 
         Vector3 panDelta = Vector3.zero;
 
-        if (dragging)
+        if (dragging && AOGInputBridge.MiddleIsPressed())
         {
-            Vector3 mouseDelta = Input.mousePosition - dragStartMouse;
-            dragStartMouse = Input.mousePosition;
+            Vector2 pointer = AOGInputBridge.PointerPosition;
+            Vector2 mouseDelta = pointer - dragStartMouse;
+            dragStartMouse = pointer;
 
             Vector3 right = PlanarRight();
             Vector3 forward = PlanarForward();
@@ -204,7 +205,7 @@ public class AOGMobaCameraController : MonoBehaviour
         }
         else if (edgePanEnabled && !pointerOverUi && Application.isFocused)
         {
-            Vector3 mouse = Input.mousePosition;
+            Vector2 mouse = AOGInputBridge.PointerPosition;
             Vector2 input = Vector2.zero;
 
             if (mouse.x <= edgeBorderPixels) input.x -= 1f;
@@ -230,7 +231,7 @@ public class AOGMobaCameraController : MonoBehaviour
         if (target == null)
             return;
 
-        if (Input.GetKey(focusKey))
+        if (AOGInputBridge.KeyIsPressed(focusKey))
         {
             panOffset = Vector3.MoveTowards(panOffset, Vector3.zero, panReturnSpeed * Time.unscaledDeltaTime);
             if (panOffset.sqrMagnitude < 0.01f)

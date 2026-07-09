@@ -10,6 +10,7 @@ public class AOGGameplayVisualCleanupRuntime : MonoBehaviour
     private static AOGGameplayVisualCleanupRuntime instance;
     private readonly Dictionary<Material, Material> grassMaterialCache = new Dictionary<Material, Material>();
     private readonly Dictionary<Material, Material> roadMaterialCache = new Dictionary<Material, Material>();
+    private readonly Dictionary<Material, Material> characterMaterialCache = new Dictionary<Material, Material>();
     private Texture2D grassTexture;
     private Texture2D roadTexture;
 
@@ -70,6 +71,7 @@ public class AOGGameplayVisualCleanupRuntime : MonoBehaviour
         {
             CleanupGeneratedPrototypePresentation();
             ApplySurfaceMaterialPolish();
+            ApplyCharacterPolish();
             ApplyLightingPolish();
             yield return new WaitForSecondsRealtime(0.15f);
         }
@@ -130,15 +132,15 @@ public class AOGGameplayVisualCleanupRuntime : MonoBehaviour
     {
         grassTexture = BuildNoiseTexture(
             "AOG_Grass_Detail_Runtime",
-            new Color(0.10f, 0.22f, 0.10f),
-            new Color(0.22f, 0.38f, 0.16f),
+            new Color(0.075f, 0.16f, 0.075f),
+            new Color(0.24f, 0.40f, 0.16f),
             4.5f,
             0.32f);
 
         roadTexture = BuildNoiseTexture(
             "AOG_Road_Detail_Runtime",
-            new Color(0.20f, 0.16f, 0.12f),
-            new Color(0.44f, 0.33f, 0.22f),
+            new Color(0.18f, 0.135f, 0.10f),
+            new Color(0.46f, 0.34f, 0.22f),
             7.5f,
             0.26f);
     }
@@ -189,27 +191,29 @@ public class AOGGameplayVisualCleanupRuntime : MonoBehaviour
             if (objectName.Contains("shadow") || objectName.Contains("indicator") || objectName.Contains("ring"))
                 continue;
 
-            bool grassLike = IsGrassLike(objectName, renderer.sharedMaterial);
-            bool roadLike = IsRoadLike(objectName, renderer.sharedMaterial);
-            if (!grassLike && !roadLike)
+            Material source = renderer.sharedMaterial;
+            if (source == null || source.name.Contains("_GameplayPolished"))
                 continue;
 
-            Material source = renderer.sharedMaterial;
-            if (source == null)
+            bool grassLike = IsGrassLike(objectName, source);
+            bool roadLike = IsRoadLike(objectName, source);
+            if (!grassLike && !roadLike)
                 continue;
 
             Dictionary<Material, Material> cache = grassLike ? grassMaterialCache : roadMaterialCache;
             if (!cache.TryGetValue(source, out Material polished))
             {
-                polished = CreatePolishedMaterial(source, grassLike);
+                polished = CreatePolishedSurfaceMaterial(source, grassLike);
                 cache[source] = polished;
             }
 
             renderer.sharedMaterial = polished;
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            renderer.receiveShadows = true;
         }
     }
 
-    private Material CreatePolishedMaterial(Material source, bool grassLike)
+    private Material CreatePolishedSurfaceMaterial(Material source, bool grassLike)
     {
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null)
@@ -221,8 +225,6 @@ public class AOGGameplayVisualCleanupRuntime : MonoBehaviour
         };
 
         Texture2D detail = grassLike ? grassTexture : roadTexture;
-        Color neutral = Color.white;
-
         if (material.HasProperty("_BaseMap"))
         {
             material.SetTexture("_BaseMap", detail);
@@ -230,9 +232,9 @@ public class AOGGameplayVisualCleanupRuntime : MonoBehaviour
         }
 
         if (material.HasProperty("_BaseColor"))
-            material.SetColor("_BaseColor", neutral);
+            material.SetColor("_BaseColor", Color.white);
 
-        material.color = neutral;
+        material.color = Color.white;
 
         if (material.HasProperty("_Smoothness"))
             material.SetFloat("_Smoothness", grassLike ? 0.06f : 0.13f);
@@ -245,6 +247,70 @@ public class AOGGameplayVisualCleanupRuntime : MonoBehaviour
 
         material.enableInstancing = true;
         return material;
+    }
+
+    private void ApplyCharacterPolish()
+    {
+        AOGPlayerMOBAController[] players = Object.FindObjectsByType<AOGPlayerMOBAController>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (AOGPlayerMOBAController player in players)
+        {
+            if (player == null || !player.gameObject.name.ToLowerInvariant().Contains("lyra"))
+                continue;
+
+            Renderer[] renderers = player.GetComponentsInChildren<Renderer>(true);
+            foreach (Renderer renderer in renderers)
+            {
+                if (renderer == null)
+                    continue;
+
+                string lowerName = renderer.gameObject.name.ToLowerInvariant();
+                if (lowerName.Contains("ring") || lowerName.Contains("shadow") || lowerName.Contains("hp_bar"))
+                    continue;
+
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+                renderer.receiveShadows = true;
+                renderer.lightProbeUsage = LightProbeUsage.BlendProbes;
+                renderer.reflectionProbeUsage = ReflectionProbeUsage.BlendProbes;
+
+                Material[] materials = renderer.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    Material source = materials[i];
+                    if (source == null || source.name.Contains("_CharacterPolished"))
+                        continue;
+
+                    if (!characterMaterialCache.TryGetValue(source, out Material polished))
+                    {
+                        polished = new Material(source)
+                        {
+                            name = source.name + "_CharacterPolished",
+                            enableInstancing = true
+                        };
+
+                        string materialName = source.name.ToLowerInvariant();
+                        bool metallicSurface = materialName.Contains("metal") || materialName.Contains("armor") || materialName.Contains("blade");
+
+                        if (polished.HasProperty("_Smoothness"))
+                            polished.SetFloat("_Smoothness", metallicSurface ? 0.58f : 0.30f);
+
+                        if (polished.HasProperty("_Metallic"))
+                            polished.SetFloat("_Metallic", metallicSurface ? 0.48f : 0.05f);
+
+                        if (polished.HasProperty("_OcclusionStrength"))
+                            polished.SetFloat("_OcclusionStrength", 1f);
+
+                        characterMaterialCache[source] = polished;
+                    }
+
+                    materials[i] = polished;
+                    changed = true;
+                }
+
+                if (changed)
+                    renderer.sharedMaterials = materials;
+            }
+        }
     }
 
     private static bool IsGrassLike(string objectName, Material material)

@@ -92,7 +92,7 @@ public class LyraSkillSet : MonoBehaviour, IChampionBasicAttackModifier
 
         nextQ = Time.time + qCooldown;
         PlayAbilityPresentation(0);
-        CreateProjectile(target, qDamage, qProjectileSpeed, "Lyra_Q_Neon_Dagger");
+        CreateProjectile(target, qDamage, qProjectileSpeed, "Lyra_Q_Neon_Dagger", 0);
     }
 
     private void CastW()
@@ -110,6 +110,7 @@ public class LyraSkillSet : MonoBehaviour, IChampionBasicAttackModifier
 
         SetRenderersTransparent(vanishedAlpha);
         CreateCircleVisual(transform.position, 2.2f, "Lyra_W_Vanish");
+        presentation?.SpawnAbilityImpactVfx(transform.position + Vector3.up * 0.2f, 1);
     }
 
     private void CastE()
@@ -127,6 +128,7 @@ public class LyraSkillSet : MonoBehaviour, IChampionBasicAttackModifier
         target.TakeDamage(eDamage, gameObject);
         StartCoroutine(ApplySlow(target, eSlowDuration));
         CreateCircleVisual(target.transform.position, 2.8f, "Lyra_E_Hunters_Net");
+        presentation?.SpawnAbilityImpactVfx(target.transform.position + Vector3.up * 0.8f, 2);
     }
 
     private void CastR()
@@ -149,7 +151,8 @@ public class LyraSkillSet : MonoBehaviour, IChampionBasicAttackModifier
         float finalDamage = target.hp <= target.maxHp * executeThreshold ? target.hp + 999f : rDamage;
         target.TakeDamage(finalDamage, gameObject);
         CreateCircleVisual(target.transform.position, 4f, "Lyra_R_Blood_Moon");
-        CreateProjectile(target, 0f, 35f, "Lyra_R_Blood_Slash");
+        presentation?.SpawnAbilityImpactVfx(target.transform.position + Vector3.up * 1f, 3);
+        CreateProjectile(target, 0f, 35f, "Lyra_R_Blood_Slash", 3);
     }
 
     public void OnBasicAttackHit(Minion target)
@@ -184,7 +187,7 @@ public class LyraSkillSet : MonoBehaviour, IChampionBasicAttackModifier
         return closest;
     }
 
-    private void CreateProjectile(Minion target, float damage, float speed, string projectileName)
+    private void CreateProjectile(Minion target, float damage, float speed, string projectileName, int abilitySlot)
     {
         if (target == null)
             return;
@@ -205,6 +208,8 @@ public class LyraSkillSet : MonoBehaviour, IChampionBasicAttackModifier
         LyraProjectile projectileLogic = projectile.AddComponent<LyraProjectile>();
         projectileLogic.target = target;
         projectileLogic.owner = gameObject;
+        projectileLogic.presentation = presentation;
+        projectileLogic.abilitySlot = abilitySlot;
         projectileLogic.damage = damage;
         projectileLogic.speed = speed;
         projectileLogic.color = lyraColor;

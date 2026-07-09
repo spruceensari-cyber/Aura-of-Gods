@@ -3,22 +3,12 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Locks authored road and lane decoration during play. Legacy editor/upgrader scripts are disabled,
+/// Locks authored road and lane decoration during play. Legacy editor/build/upgrader scripts are disabled,
 /// physics is removed from decorative road pieces and their transforms are restored every LateUpdate.
 /// </summary>
 public class AOGSceneRuntimeLock : MonoBehaviour
 {
     private readonly Dictionary<Transform, Pose> locked = new();
-    private static readonly HashSet<string> DisabledLegacyTypes = new()
-    {
-        "AOGRoadDetailUpgrade",
-        "AOGTerrainHeightShaper",
-        "AOGStructureUpgrade",
-        "AOGSceneLookSetup",
-        "AOGTerrainPainter",
-        "AOGRoadBuilder",
-        "AOGMapDecorator"
-    };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
@@ -65,6 +55,8 @@ public class AOGSceneRuntimeLock : MonoBehaviour
             {
                 rb.isKinematic = true;
                 rb.detectCollisions = false;
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
             }
 
             Collider col = t.GetComponent<Collider>();
@@ -80,15 +72,32 @@ public class AOGSceneRuntimeLock : MonoBehaviour
         foreach (MonoBehaviour behaviour in behaviours)
         {
             if (behaviour == null || behaviour == this) continue;
-            if (DisabledLegacyTypes.Contains(behaviour.GetType().Name))
+            string typeName = behaviour.GetType().Name;
+            if (IsLegacyEnvironmentMutator(typeName))
                 behaviour.enabled = false;
         }
+    }
+
+    private static bool IsLegacyEnvironmentMutator(string typeName)
+    {
+        if (string.IsNullOrWhiteSpace(typeName) || !typeName.StartsWith("AOG")) return false;
+
+        string n = typeName.ToLowerInvariant();
+        return n.Contains("builder")
+            || n.Contains("upgrade")
+            || n.Contains("painter")
+            || n.Contains("heightshaper")
+            || n.Contains("scenelook")
+            || n.Contains("prefabvisual")
+            || n.Contains("road detail")
+            || n.Contains("roaddetail")
+            || n.Contains("mapdecorator");
     }
 
     private static bool IsRoadDecor(Transform t)
     {
         string n = t.name.ToLowerInvariant();
-        if (n.Contains("road_detail") || n.Contains("broken_stone") || n.Contains("dark_crack") || n.Contains("small_rune"))
+        if (n.Contains("road_detail") || n.Contains("broken_stone") || n.Contains("dark_crack") || n.Contains("small_rune") || n.Contains("edge_l_") || n.Contains("edge_r_"))
             return true;
 
         Transform p = t.parent;

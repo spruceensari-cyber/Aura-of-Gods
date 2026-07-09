@@ -1,8 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Primary MOBA camera. Disables the legacy camera controller on the same camera to avoid double-driving,
-/// uses allocation-free combat detection, smooth zoom and stable edge/drag pan.
+/// Primary MOBA camera for the rebuild slice. Uses the shared input bridge, allocation-free combat detection,
+/// smooth zoom and stable edge/drag pan.
 /// </summary>
 public class AOGMobaCameraController : MonoBehaviour
 {
@@ -26,10 +26,6 @@ public class AOGMobaCameraController : MonoBehaviour
     public float maxZoom = 38f;
     public float combatZoomOut = 3f;
     public float combatDetectionRadius = 13f;
-
-    [Header("Controls")]
-    public KeyCode focusKey = KeyCode.Space;
-    public KeyCode dragKey = KeyCode.Mouse2;
 
     private readonly Collider[] combatHits = new Collider[32];
     private float currentZoom;
@@ -81,9 +77,9 @@ public class AOGMobaCameraController : MonoBehaviour
 
     private void HandleZoom()
     {
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        float scroll = AOGInputBridge.ScrollY;
         if (Mathf.Abs(scroll) > 0.001f)
-            targetZoom = Mathf.Clamp(targetZoom - scroll * zoomSpeed * 10f, minZoom, maxZoom);
+            targetZoom = Mathf.Clamp(targetZoom - scroll * zoomSpeed * 2.2f, minZoom, maxZoom);
 
         currentZoom = Mathf.Lerp(currentZoom, targetZoom, 1f - Mathf.Exp(-10f * Time.unscaledDeltaTime));
     }
@@ -91,7 +87,7 @@ public class AOGMobaCameraController : MonoBehaviour
     private void HandlePan()
     {
         Vector3 pan = Vector3.zero;
-        Vector3 mouse = Input.mousePosition;
+        Vector2 mouse = AOGInputBridge.PointerPosition;
 
         bool insideWindow = mouse.x >= 0f && mouse.x <= Screen.width && mouse.y >= 0f && mouse.y <= Screen.height;
         if (insideWindow && !dragging)
@@ -106,17 +102,18 @@ public class AOGMobaCameraController : MonoBehaviour
         if (pan.sqrMagnitude > 0f)
             freePanOffset += pan.normalized * panSpeed * Time.unscaledDeltaTime;
 
-        if (Input.GetKeyDown(dragKey))
+        if (AOGInputBridge.MiddleClickPressed)
         {
             dragging = true;
             lastMousePosition = mouse;
         }
 
-        if (Input.GetKeyUp(dragKey)) dragging = false;
+        if (AOGInputBridge.MiddleClickReleased)
+            dragging = false;
 
         if (dragging)
         {
-            Vector3 delta = mouse - lastMousePosition;
+            Vector3 delta = (Vector3)mouse - lastMousePosition;
             lastMousePosition = mouse;
             freePanOffset += new Vector3(-delta.x, 0f, -delta.y) * dragPanSpeed;
         }
@@ -126,7 +123,7 @@ public class AOGMobaCameraController : MonoBehaviour
 
     private void HandleFocus()
     {
-        if (Input.GetKey(focusKey))
+        if (AOGInputBridge.FocusHeld)
             freePanOffset = Vector3.Lerp(freePanOffset, Vector3.zero, 1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
     }
 

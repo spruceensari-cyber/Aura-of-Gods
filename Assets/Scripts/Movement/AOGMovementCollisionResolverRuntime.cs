@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -11,7 +10,7 @@ public static class AOGMovementCollisionResolver
     private static readonly RaycastHit[] sweepHits = new RaycastHit[24];
     private static readonly Collider[] overlapHits = new Collider[24];
 
-    public static Vector3 ResolveStep(Transform actor, Vector3 desiredDelta, float radius, float height)
+    public static Vector3 ResolveStep(Transform actor, Vector3 startPosition, Vector3 desiredDelta, float radius, float height)
     {
         if (actor == null || desiredDelta.sqrMagnitude <= 0.0000001f) return Vector3.zero;
 
@@ -20,7 +19,7 @@ public static class AOGMovementCollisionResolver
         if (distance <= 0.0001f) return Vector3.zero;
 
         Vector3 direction = desiredDelta / distance;
-        Capsule(actor.position,radius,height,out Vector3 bottom,out Vector3 top);
+        Capsule(startPosition,radius,height,out Vector3 bottom,out Vector3 top);
         int count = Physics.CapsuleCastNonAlloc(bottom,top,radius,direction,sweepHits,distance+0.08f,~0,QueryTriggerInteraction.Ignore);
 
         RaycastHit nearest = default;
@@ -47,7 +46,7 @@ public static class AOGMovementCollisionResolver
         slide.y = 0f;
         if (slide.sqrMagnitude <= 0.0001f) return first;
 
-        Vector3 slideStart = actor.position+first;
+        Vector3 slideStart = startPosition+first;
         Capsule(slideStart,radius,height,out bottom,out top);
         float slideDistance = slide.magnitude;
         Vector3 slideDirection = slide/slideDistance;
@@ -97,7 +96,6 @@ public static class AOGMovementCollisionResolver
         Transform t = collider.transform;
         if (t == actor || t.IsChildOf(actor) || actor.IsChildOf(t)) return false;
 
-        // Units overlap/steer instead of acting as immovable geometry.
         if (collider.GetComponentInParent<AOGCharacterStats>() != null) return false;
         if (collider.GetComponentInParent<Minion>() != null) return false;
         if (collider.GetComponentInParent<AOGNeutralMonsterRuntime>() != null) return false;
@@ -121,8 +119,65 @@ public static class AOGMovementCollisionResolver
 }
 
 /// <summary>
-/// Low-frequency stuck detector. It never owns movement; it only applies a small depenetration nudge
-/// after an actor has repeatedly tried to move but has barely changed position.
+/// Late-frame guard for every transform-driven movement authority. It records the frame start,
+/// inspects the final attempted displacement and rewrites that displacement through the resolver.
+/// </summary>
+[DefaultExecutionOrder(9000)]
+public class AOGMovementFrameGuardRuntime : MonoBehaviour
+{
+    public float radius = 0.58f;
+    public float height = 2.2f;
+    public float maxFrameDistance = 1.25f;
+
+    private Vector3 frameStart;
+    private bool initialized;
+
+    private void OnEnable()
+    {
+        frameStart = transform.position;
+        initialized = true;
+    }
+
+    private void Update()
+    {
+        if (!initialized)
+        {
+            frameStart = transform.position;
+            initialized = true;
+        }
+    }
+
+    private void LateUpdate()
+    {
+        Vector3 attempted = transform.position-frameStart;
+        float vertical = attempted.y;
+        attempted.y = 0f;
+
+        if (attempted.magnitude > maxFrameDistance)
+        {
+            frameStart = transform.position;
+            return;
+        }
+
+        if (attempted.sqrMagnitude > 0.0000001f)
+        {
+            Vector3 resolved = AOGMovementCollisionResolver.ResolveStep(transform,frameStart,attempted,radius,height);
+            Vector3 final = frameStart+resolved;
+            final.y = frameStart.y+vertical;
+            transform.position = final;
+        }
+
+        Vector3 correction = AOGMovementCollisionResolver.ComputeDepenetration(transform,radius,height,0.10f);
+        if (correction.sqrMagnitude > 0.0001f)
+            transform.position += correction;
+
+        frameStart = transform.position;
+    }
+}
+
+/// <summary>
+/// Low-frequency stuck detector. It never owns path choice; it applies a small depenetration nudge
+/// and a deterministic lateral escape offset when the actor remains nearly stationary too long.
 /// </summary>
 public class AOGMovementStuckRecoveryRuntime : MonoBehaviour
 {
@@ -135,6 +190,7 @@ public class AOGMovementStuckRecoveryRuntime : MonoBehaviour
     private Vector3 lastPosition;
     private float nextSample;
     private int stuckSamples;
+    private int escapeSign = 1;
 
     private void OnEnable()
     {
@@ -154,7 +210,15 @@ public class AOGMovementStuckRecoveryRuntime : MonoBehaviour
         lastPosition = transform.position;
 
         if (stuckSamples < samplesBeforeRecovery) return;
+
         Vector3 correction = AOGMovementCollisionResolver.ComputeDepenetration(transform,radius,height,0.28f);
+        if (correction.sqrMagnitude <= 0.0001f)
+        {
+            Vector3 lateral = Vector3.Cross(Vector3.up,transform.forward).normalized*escapeSign*0.22f;
+            correction = AOGMovementCollisionResolver.ResolveStep(transform,transform.position,lateral,radius,height);
+            escapeSign *= -1;
+        }
+
         if (correction.sqrMagnitude > 0.0001f)
             transform.position += correction;
         stuckSamples = 0;
@@ -181,27 +245,27 @@ public class AOGMovementReliabilityBootstrap : MonoBehaviour
         nextAttach = Time.unscaledTime+1.0f;
 
         foreach (AOGCharacterStats hero in AOGWorldRegistry.Characters)
-        {
-            if (hero == null || hero.GetComponent<AOGMovementStuckRecoveryRuntime>() != null) continue;
-            AOGMovementStuckRecoveryRuntime recovery = hero.gameObject.AddComponent<AOGMovementStuckRecoveryRuntime>();
-            CapsuleCollider capsule = hero.GetComponent<CapsuleCollider>();
-            if (capsule != null)
-            {
-                recovery.radius = capsule.radius;
-                recovery.height = capsule.height;
-            }
-        }
+            Attach(hero != null ? hero.gameObject : null);
 
         foreach (Minion minion in Minion.Active)
-        {
-            if (minion == null || minion.GetComponent<AOGMovementStuckRecoveryRuntime>() != null) continue;
-            AOGMovementStuckRecoveryRuntime recovery = minion.gameObject.AddComponent<AOGMovementStuckRecoveryRuntime>();
-            CapsuleCollider capsule = minion.GetComponent<CapsuleCollider>();
-            if (capsule != null)
-            {
-                recovery.radius = capsule.radius;
-                recovery.height = capsule.height;
-            }
-        }
+            Attach(minion != null ? minion.gameObject : null);
+    }
+
+    private static void Attach(GameObject target)
+    {
+        if (target == null) return;
+        CapsuleCollider capsule = target.GetComponent<CapsuleCollider>();
+        float radius = capsule != null ? capsule.radius : 0.58f;
+        float height = capsule != null ? capsule.height : 2.2f;
+
+        AOGMovementFrameGuardRuntime guard = target.GetComponent<AOGMovementFrameGuardRuntime>();
+        if (guard == null) guard = target.AddComponent<AOGMovementFrameGuardRuntime>();
+        guard.radius = radius;
+        guard.height = height;
+
+        AOGMovementStuckRecoveryRuntime recovery = target.GetComponent<AOGMovementStuckRecoveryRuntime>();
+        if (recovery == null) recovery = target.AddComponent<AOGMovementStuckRecoveryRuntime>();
+        recovery.radius = radius;
+        recovery.height = height;
     }
 }

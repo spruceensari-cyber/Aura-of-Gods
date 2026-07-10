@@ -70,11 +70,12 @@ public class AOGMapSpatialIdentityRuntime : MonoBehaviour
 
         for (int i=0;i<points.Length;i++)
         {
-            GameObject crystal = GameObject.CreatePrimitive(PrimitiveType.Octahedron);
+            GameObject crystal = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             crystal.name = "River_Aether_Crystal_"+i;
             crystal.transform.SetParent(root,false);
             crystal.transform.position = points[i] + Vector3.up*1.8f;
-            crystal.transform.localScale = new Vector3(0.9f,2.2f,0.9f);
+            crystal.transform.rotation = Quaternion.Euler(0f,0f,45f);
+            crystal.transform.localScale = new Vector3(0.55f,1.45f,0.55f);
             crystal.GetComponent<Renderer>().sharedMaterial = Emissive(new Color(0.08f,0.62f,0.82f),3.2f);
             Collider c=crystal.GetComponent<Collider>(); if(c!=null)Destroy(c);
 

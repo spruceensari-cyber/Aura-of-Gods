@@ -11,9 +11,9 @@ public class AOGBotRecallRoleShoppingRuntime : MonoBehaviour
     public float recallDuration = 5.8f;
     public float safeEnemyRadius = 11f;
     public float lowHpRecallRatio = 0.34f;
-    public int goldRecallThreshold = 1450;
+    public int goldRecallThreshold = 1100;
     public float botGoldInterval = 1f;
-    public int botGoldPerInterval = 2;
+    public int botGoldPerInterval = 4;
 
     private AOGTeamMemberIdentity identity;
     private AOGCharacterStats stats;
@@ -25,6 +25,9 @@ public class AOGBotRecallRoleShoppingRuntime : MonoBehaviour
     private readonly List<AOGAdvancedItemDefinition> build = new List<AOGAdvancedItemDefinition>();
     private bool channeling;
     private bool shopping;
+    private bool aiStateCaptured;
+    private bool laneAiWasEnabled;
+    private bool jungleAiWasEnabled;
     private float recallStarted;
     private float recallStartHp;
     private Vector3 recallStartPosition;
@@ -97,7 +100,8 @@ public class AOGBotRecallRoleShoppingRuntime : MonoBehaviour
         bool lowHp = hpRatio <= lowHpRecallRatio;
         bool enoughGold = economy != null && economy.gold >= Mathf.Max(goldRecallThreshold,NextItemCost());
         bool inventoryFull = economy != null && economy.inventory.Count >= economy.inventoryCapacity;
-        return !inventoryFull && (lowHp || enoughGold);
+        bool buildComplete = buildIndex >= build.Count;
+        return !inventoryFull && !buildComplete && (lowHp || enoughGold);
     }
 
     private bool IsSafeToRecall()
@@ -117,7 +121,7 @@ public class AOGBotRecallRoleShoppingRuntime : MonoBehaviour
         recallStarted = Time.time;
         recallStartHp = stats.hp;
         recallStartPosition = transform.position;
-        SetAiEnabled(false);
+        CaptureAndDisableAi();
 
         Color accent = identity.team == MinionTeam.Blue ? new Color(0.22f,0.68f,1f) : new Color(1f,0.24f,0.30f);
         recallRing = AOGAbilityVisuals.CreateRing("Bot_Recall_Channel",transform.position+Vector3.up*0.05f,2.0f,accent,0.08f);
@@ -176,7 +180,7 @@ public class AOGBotRecallRoleShoppingRuntime : MonoBehaviour
 
         yield return new WaitForSeconds(0.55f);
         shopping = false;
-        SetAiEnabled(true);
+        RestoreAiState();
     }
 
     private void CancelRecallAndRestoreAi()
@@ -185,13 +189,28 @@ public class AOGBotRecallRoleShoppingRuntime : MonoBehaviour
         shopping = false;
         if (recallRing != null) Destroy(recallRing);
         recallRing = null;
-        SetAiEnabled(true);
+        RestoreAiState();
     }
 
-    private void SetAiEnabled(bool value)
+    private void CaptureAndDisableAi()
     {
-        if (laneAi != null) laneAi.enabled = value;
-        if (jungleAi != null) jungleAi.enabled = value;
+        laneAi = GetComponent<AOGBotChampionAI>();
+        jungleAi = GetComponent<AOGJungleChampionAIRuntime>();
+        laneAiWasEnabled = laneAi != null && laneAi.enabled;
+        jungleAiWasEnabled = jungleAi != null && jungleAi.enabled;
+        aiStateCaptured = true;
+        if (laneAi != null) laneAi.enabled = false;
+        if (jungleAi != null) jungleAi.enabled = false;
+    }
+
+    private void RestoreAiState()
+    {
+        if (!aiStateCaptured) return;
+        laneAi = GetComponent<AOGBotChampionAI>();
+        jungleAi = GetComponent<AOGJungleChampionAIRuntime>();
+        if (laneAi != null) laneAi.enabled = laneAiWasEnabled;
+        if (jungleAi != null) jungleAi.enabled = jungleAiWasEnabled;
+        aiStateCaptured = false;
     }
 
     private void BuildRolePlan()

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class AOGCharacterStats : MonoBehaviour
@@ -20,11 +21,15 @@ public class AOGCharacterStats : MonoBehaviour
     public float moveSpeed = 6f;
 
     private ChampionPresentationController presentation;
+    private AOGCombatStatBlock combatStats;
     private bool deathStarted;
     private Vector3 fallbackSpawnPosition;
     private Quaternion fallbackSpawnRotation;
+    private GameObject lastDamageSource;
+    private float respawnCompleteTime;
 
     public bool IsDead => hp <= 0f || deathStarted;
+    public float RespawnRemaining => IsDead ? Mathf.Max(0f, respawnCompleteTime - Time.time) : 0f;
 
     private void Start()
     {
@@ -32,16 +37,78 @@ public class AOGCharacterStats : MonoBehaviour
             hp = maxHp;
 
         presentation = GetComponent<ChampionPresentationController>();
+        combatStats = GetComponent<AOGCombatStatBlock>();
         fallbackSpawnPosition = transform.position;
         fallbackSpawnRotation = transform.rotation;
     }
 
     public void TakeDamage(float amount)
     {
-        if (deathStarted || amount <= 0f)
+        TakeDamage(amount, null);
+    }
+
+    /// <summary>
+    /// Legacy-compatible damage path. Basic attacks remain Physical. When the source has an
+    /// active ability intent, the damage is converted into the hero/slot-specific damage type
+    /// so Armor and Magic Resistance participate without rewriting every legacy skill caller.
+    /// </summary>
+    public void TakeDamage(float amount, GameObject source)
+    {
+        AOGDamageType type = AOGDamageType.Physical;
+        string abilityId = "legacy_damage";
+
+        if (source != null)
+        {
+            AOGDamageIntentRuntime intent = source.GetComponentInParent<AOGDamageIntentRuntime>();
+            if (intent != null)
+                intent.TryResolve(out type,out abilityId);
+        }
+
+        TakeDamage(new AOGDamagePacket
+        {
+            amount=amount,
+            type=type,
+            source=source,
+            abilityId=abilityId
+        });
+    }
+
+    public void TakeDamage(AOGDamagePacket packet)
+    {
+        if (deathStarted || packet.amount <= 0f)
             return;
 
-        hp = Mathf.Clamp(hp - amount, 0f, maxHp);
+        GameObject source = packet.source;
+        if (source == null)
+            source = ResolveLikelyLegacyDamageSource();
+
+        if (source != null)
+        {
+            lastDamageSource = source;
+            AOGChampionDamageLedger ledger = GetComponent<AOGChampionDamageLedger>();
+            if (ledger == null)
+                ledger = gameObject.AddComponent<AOGChampionDamageLedger>();
+            ledger.RegisterDamage(source);
+        }
+
+        if (combatStats == null)
+            combatStats = GetComponent<AOGCombatStatBlock>();
+
+        float resolved = combatStats != null
+            ? combatStats.ResolveIncomingDamage(packet)
+            : Mathf.Max(0f,packet.amount);
+
+        hp = Mathf.Clamp(hp - resolved, 0f, maxHp);
+
+        AOGDamageResolvedEvents.Raise(new AOGResolvedDamageEvent
+        {
+            source=source,
+            target=this,
+            rawAmount=packet.amount,
+            resolvedAmount=resolved,
+            damageType=packet.type,
+            abilityId=packet.abilityId
+        });
 
         if (hp > 0f)
         {
@@ -49,10 +116,30 @@ public class AOGCharacterStats : MonoBehaviour
             return;
         }
 
-        Die();
+        Die(source);
     }
 
-    private void Die()
+    private GameObject ResolveLikelyLegacyDamageSource()
+    {
+        AOGCharacterStats best = null;
+        float bestDistance = 9f;
+        foreach (AOGCharacterStats candidate in AOGWorldRegistry.Characters)
+        {
+            if (candidate == null || candidate == this || candidate.IsDead || candidate.team == team)
+                continue;
+            Vector3 a = transform.position; a.y = 0f;
+            Vector3 b = candidate.transform.position; b.y = 0f;
+            float distance = Vector3.Distance(a,b);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+        return best != null ? best.gameObject : null;
+    }
+
+    private void Die(GameObject killer)
     {
         if (deathStarted)
             return;
@@ -61,20 +148,30 @@ public class AOGCharacterStats : MonoBehaviour
         hp = 0f;
         presentation?.PlayDeath();
 
+        AOGChampionProgression progression = GetComponent<AOGChampionProgression>();
+        int level = progression != null ? progression.level : 1;
+        float respawnTime = baseRespawnTime + Mathf.Max(0, level - 1) * 0.65f;
+        respawnCompleteTime = Time.time + deathPresentationDuration + respawnTime;
+
+        AOGChampionDamageLedger ledger = GetComponent<AOGChampionDamageLedger>();
+        List<GameObject> assistants = ledger != null ? ledger.CollectAssistants(killer) : new List<GameObject>();
+        AOGCombatEvents.RaiseChampionDeath(new AOGChampionDeathEvent
+        {
+            victim = this,
+            killer = killer != null ? killer : lastDamageSource,
+            assistants = assistants
+        });
+
         SetGameplayEnabled(false);
-        StartCoroutine(RespawnSequence());
+        StartCoroutine(RespawnSequence(respawnTime));
     }
 
-    private IEnumerator RespawnSequence()
+    private IEnumerator RespawnSequence(float respawnTime)
     {
         if (deathPresentationDuration > 0f)
             yield return new WaitForSeconds(deathPresentationDuration);
 
         SetRenderersVisible(false);
-
-        AOGChampionProgression progression = GetComponent<AOGChampionProgression>();
-        int level = progression != null ? progression.level : 1;
-        float respawnTime = baseRespawnTime + Mathf.Max(0, level - 1) * 0.65f;
         yield return new WaitForSeconds(respawnTime);
 
         Transform spawn = FindTeamSpawn();
@@ -91,21 +188,34 @@ public class AOGCharacterStats : MonoBehaviour
 
         hp = maxHp;
         deathStarted = false;
+        respawnCompleteTime = 0f;
+        lastDamageSource = null;
+        AOGChampionDamageLedger ledger = GetComponent<AOGChampionDamageLedger>();
+        ledger?.ClearLedger();
         SetRenderersVisible(true);
         SetGameplayEnabled(true);
 
         AOGAbilityVisuals.CreateRing("Champion_Respawn", transform.position + Vector3.up * 0.1f, 2.8f, new Color(0.35f, 0.82f, 1f, 1f), 0.14f);
 
-        Camera camera = Camera.main;
-        if (camera != null)
-            camera.GetComponent<AOGMobaCameraController>()?.SetTarget(transform, true);
+        AOGActiveChampion marker = GetComponent<AOGActiveChampion>();
+        bool isHumanPlayer = marker != null && AOGPlayerChampionAuthority.CurrentChampion == marker;
+        if (isHumanPlayer)
+        {
+            Camera camera = Camera.main;
+            if (camera != null)
+                camera.GetComponent<AOGMobaCameraController>()?.SetTarget(transform, true);
+        }
     }
 
     private void SetGameplayEnabled(bool enabled)
     {
         AOGUnifiedMobaInputDriver unified = GetComponent<AOGUnifiedMobaInputDriver>();
         if (unified != null)
-            unified.enabled = enabled;
+        {
+            AOGActiveChampion marker = GetComponent<AOGActiveChampion>();
+            bool isHumanPlayer = marker != null && AOGPlayerChampionAuthority.CurrentChampion == marker;
+            unified.enabled = enabled && isHumanPlayer;
+        }
 
         AOGPlayerMOBAController legacyMoba = GetComponent<AOGPlayerMOBAController>();
         if (legacyMoba != null)

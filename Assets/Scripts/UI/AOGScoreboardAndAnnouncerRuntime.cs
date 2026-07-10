@@ -5,6 +5,8 @@ using UnityEngine.UI;
 [DefaultExecutionOrder(1800)]
 public class AOGScoreboardAndAnnouncerRuntime : MonoBehaviour
 {
+    public static AOGScoreboardAndAnnouncerRuntime Instance { get; private set; }
+
     private Canvas canvas;
     private Text blueScoreText;
     private Text redScoreText;
@@ -20,6 +22,8 @@ public class AOGScoreboardAndAnnouncerRuntime : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
     {
+        if (FindFirstObjectByType<AOGScoreboardAndAnnouncerRuntime>() != null)
+            return;
         GameObject host = new GameObject("AOG_Scoreboard_And_Announcer");
         DontDestroyOnLoad(host);
         host.AddComponent<AOGScoreboardAndAnnouncerRuntime>();
@@ -27,6 +31,12 @@ public class AOGScoreboardAndAnnouncerRuntime : MonoBehaviour
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
         font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         BuildUi();
     }
@@ -44,6 +54,11 @@ public class AOGScoreboardAndAnnouncerRuntime : MonoBehaviour
         redScoreText.text = redKills + "  RED";
         if (centerText != null && Time.unscaledTime > messageUntil)
             centerText.text = string.Empty;
+    }
+
+    public void ShowExternalMessage(string message, Color color, float duration)
+    {
+        ShowMessage(message,color,duration);
     }
 
     private void ScanHeroes()
@@ -91,6 +106,8 @@ public class AOGScoreboardAndAnnouncerRuntime : MonoBehaviour
 
     private void ShowMessage(string message, Color color, float duration)
     {
+        if (centerText == null)
+            return;
         centerText.text = message;
         centerText.color = color;
         messageUntil = Time.unscaledTime + duration;

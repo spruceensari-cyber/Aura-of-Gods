@@ -124,6 +124,10 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
         EnsurePremiumMage("nyra", "NYRA", "SPIRIT VIXEN", AOGPremiumMageType.NyraSpiritVixen, new Color(0.94f, 0.28f, 0.74f));
         EnsurePremiumMage("pyrelle", "PYRELLE", "FLAME SOVEREIGN", AOGPremiumMageType.PyrelleFlameSovereign, new Color(1f, 0.22f, 0.035f));
         EnsurePremiumMage("selene", "SELENE", "ASTRAL ORACLE", AOGPremiumMageType.SeleneAstralOracle, new Color(0.36f, 0.68f, 1f));
+        EnsureSupportJungle("seris", "SERIS", "AETHER VEIL", AOGSupportJungleHeroType.Seris, new Color(0.24f,0.88f,0.95f), 920f, 48f, 6.1f, 1.0f, 6.2f);
+        EnsureSupportJungle("mireva", "MIREVA", "BLOOM WARDEN", AOGSupportJungleHeroType.Mireva, new Color(0.18f,0.82f,0.42f), 980f, 50f, 6.0f, 1.02f, 6.0f);
+        EnsureSupportJungle("dravenor", "DRAVENOR", "FANG STALKER", AOGSupportJungleHeroType.Dravenor, new Color(0.92f,0.28f,0.08f), 1040f, 70f, 2.8f, 0.90f, 6.8f);
+        EnsureSupportJungle("nocthyr", "NOCTHYR", "SHADE TRACKER", AOGSupportJungleHeroType.Nocthyr, new Color(0.28f,0.18f,0.72f), 850f, 74f, 2.7f, 0.82f, 7.1f);
     }
 
     private void EnsureLyra()
@@ -202,6 +206,20 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
         kit.mageType = type;
     }
 
+    private void EnsureSupportJungle(string id,string display,string title,AOGSupportJungleHeroType type,Color accent,float hp,float damage,float range,float cooldown,float speed)
+    {
+        AOGActiveChampion marker = FindCandidateById(id);
+        if (marker == null)
+        {
+            GameObject obj = new GameObject(display + "_Player");
+            AOGOriginalChampionModelFactory.BuildChampion(obj.transform,id,accent);
+            marker = EnsureCommon(obj,id,display,title,accent,hp,damage,range,cooldown,speed);
+        }
+        AOGSupportJungleHeroKitRuntime kit = marker.GetComponent<AOGSupportJungleHeroKitRuntime>();
+        if (kit == null) kit = marker.gameObject.AddComponent<AOGSupportJungleHeroKitRuntime>();
+        kit.heroType = type;
+    }
+
     private AOGActiveChampion EnsureCommon(GameObject obj, string id, string display, string title, Color accent, float hp, float damage, float range, float cooldown, float speed)
     {
         obj.name = display.Substring(0,1) + display.Substring(1).ToLowerInvariant() + "_Player";
@@ -247,7 +265,7 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
     private void CollectCandidates()
     {
         candidates.Clear();
-        string[] order = { "lyra", "kaelith", "auron", "vesper", "nyra", "pyrelle", "selene" };
+        string[] order = { "lyra", "kaelith", "auron", "vesper", "nyra", "pyrelle", "selene", "seris", "mireva", "dravenor", "nocthyr" };
         foreach (string id in order)
         {
             AOGActiveChampion candidate = FindCandidateById(id);
@@ -278,38 +296,38 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
         scaler.matchWidthOrHeight = 0.5f;
 
         Image shade = CreatePanel(canvas.transform, "Shade", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, new Color(0.003f,0.006f,0.015f,0.97f), true);
-        CreateLabel(shade.transform,"Title","CHOOSE YOUR ASCENDANT",44,new Vector2(0f,460f),new Vector2(1200f,70f),new Color(0.96f,0.78f,0.34f));
-        CreateLabel(shade.transform,"Subtitle","SEVEN ORIGINAL CHAMPIONS — ONE PLAYER AUTHORITY",18,new Vector2(0f,410f),new Vector2(1200f,40f),new Color(0.55f,0.72f,0.88f));
+        CreateLabel(shade.transform,"Title","CHOOSE YOUR ASCENDANT",42,new Vector2(0f,470f),new Vector2(1200f,64f),new Color(0.96f,0.78f,0.34f));
+        CreateLabel(shade.transform,"Subtitle","ELEVEN ORIGINAL CHAMPIONS — FIVE COMPETITIVE ROLES",17,new Vector2(0f,426f),new Vector2(1400f,34f),new Color(0.55f,0.72f,0.88f));
 
         for (int i = 0; i < candidates.Count; i++)
         {
-            int row = i < 4 ? 0 : 1;
-            int column = row == 0 ? i : i - 4;
-            int count = row == 0 ? 4 : 3;
-            float spacing = 330f;
+            int row = i < 6 ? 0 : 1;
+            int column = row == 0 ? i : i - 6;
+            int count = row == 0 ? Mathf.Min(6,candidates.Count) : Mathf.Max(0,candidates.Count-6);
+            float spacing = 282f;
             float x = (column - (count - 1) * 0.5f) * spacing;
-            float y = row == 0 ? 135f : -215f;
+            float y = row == 0 ? 145f : -180f;
             BuildCard(shade.transform, candidates[i], new Vector2(x,y));
         }
     }
 
     private void BuildCard(Transform parent, AOGActiveChampion champion, Vector2 position)
     {
-        Image card = CreatePanel(parent,"Card_"+champion.championId,new Vector2(0.5f,0.5f),new Vector2(0.5f,0.5f),position,new Vector2(292f,300f),new Color(0.015f,0.026f,0.045f,0.99f),false);
+        Image card = CreatePanel(parent,"Card_"+champion.championId,new Vector2(0.5f,0.5f),new Vector2(0.5f,0.5f),position,new Vector2(252f,276f),new Color(0.015f,0.026f,0.045f,0.99f),false);
         Outline outline = card.gameObject.AddComponent<Outline>(); outline.effectColor = champion.accentColor; outline.effectDistance = new Vector2(2f,-2f);
-        Image portrait = CreatePanel(card.transform,"Portrait",new Vector2(0.5f,1f),new Vector2(0.5f,1f),new Vector2(0f,-18f),new Vector2(252f,128f),new Color(champion.accentColor.r*0.18f,champion.accentColor.g*0.18f,champion.accentColor.b*0.18f,1f),false);
-        CreateLabel(portrait.transform,"Glyph",champion.displayName.Substring(0,1),62,Vector2.zero,new Vector2(220f,100f),champion.accentColor);
-        CreateLabel(card.transform,"Name",champion.displayName,27,new Vector2(0f,18f),new Vector2(260f,42f),Color.white);
-        CreateLabel(card.transform,"Role",champion.roleName,13,new Vector2(0f,-18f),new Vector2(260f,30f),champion.accentColor);
-        CreateLabel(card.transform,"Lane",RoleFor(champion.championId).ToString().ToUpperInvariant(),12,new Vector2(0f,-46f),new Vector2(260f,26f),new Color(0.62f,0.72f,0.80f));
+        Image portrait = CreatePanel(card.transform,"Portrait",new Vector2(0.5f,1f),new Vector2(0.5f,1f),new Vector2(0f,-14f),new Vector2(218f,104f),new Color(champion.accentColor.r*0.18f,champion.accentColor.g*0.18f,champion.accentColor.b*0.18f,1f),false);
+        CreateLabel(portrait.transform,"Glyph",champion.displayName.Substring(0,1),50,Vector2.zero,new Vector2(190f,84f),champion.accentColor);
+        CreateLabel(card.transform,"Name",champion.displayName,23,new Vector2(0f,15f),new Vector2(230f,36f),Color.white);
+        CreateLabel(card.transform,"Role",champion.roleName,11,new Vector2(0f,-16f),new Vector2(230f,26f),champion.accentColor);
+        CreateLabel(card.transform,"Lane",RoleFor(champion.championId).ToString().ToUpperInvariant(),11,new Vector2(0f,-42f),new Vector2(230f,24f),new Color(0.62f,0.72f,0.80f));
 
         GameObject buttonObject = new GameObject("Select_"+champion.championId,typeof(RectTransform),typeof(Image),typeof(Button));
         buttonObject.transform.SetParent(card.transform,false);
-        RectTransform br = buttonObject.GetComponent<RectTransform>(); br.anchorMin=br.anchorMax=new Vector2(0.5f,0f); br.pivot=new Vector2(0.5f,0f); br.anchoredPosition=new Vector2(0f,16f); br.sizeDelta=new Vector2(248f,48f);
+        RectTransform br = buttonObject.GetComponent<RectTransform>(); br.anchorMin=br.anchorMax=new Vector2(0.5f,0f); br.pivot=new Vector2(0.5f,0f); br.anchoredPosition=new Vector2(0f,14f); br.sizeDelta=new Vector2(214f,42f);
         buttonObject.GetComponent<Image>().color = new Color(champion.accentColor.r*0.50f,champion.accentColor.g*0.50f,champion.accentColor.b*0.50f,1f);
         AOGActiveChampion captured = champion;
         buttonObject.GetComponent<Button>().onClick.AddListener(()=>Select(captured));
-        CreateLabel(buttonObject.transform,"Text","ENTER AS "+champion.displayName,16,Vector2.zero,new Vector2(236f,44f),Color.white);
+        CreateLabel(buttonObject.transform,"Text","ENTER AS "+champion.displayName,13,Vector2.zero,new Vector2(204f,38f),Color.white);
     }
 
     private void Select(AOGActiveChampion champion)
@@ -336,8 +354,9 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
     private static AOGRole RoleFor(string id)
     {
         if (id == "kaelith" || id == "auron") return AOGRole.Top;
+        if (id == "dravenor" || id == "nocthyr") return AOGRole.Jungle;
         if (id == "vesper") return AOGRole.ADC;
-        if (id == "selene") return AOGRole.Support;
+        if (id == "selene" || id == "seris" || id == "mireva") return AOGRole.Support;
         return AOGRole.Mid;
     }
 
@@ -365,8 +384,8 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
     {
         Transform spawn = FindNamedTransform("BluePlayerSpawn","BlueBaseSpawn","Blue_Spawn","BlueSpawn");
         if(spawn==null)return;
-        int index = Mathf.Abs(id.GetHashCode()) % 7;
-        candidate.position = spawn.position + new Vector3((index-3)*1.1f,0.2f,3f+(index%2)*1.2f);
+        int index = Mathf.Abs(id.GetHashCode()) % 11;
+        candidate.position = spawn.position + new Vector3((index-5)*0.92f,0.2f,3f+(index%2)*1.1f);
     }
 
     private static Transform FindNamedTransform(params string[] names)

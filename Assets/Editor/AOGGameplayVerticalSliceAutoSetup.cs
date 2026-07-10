@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 [InitializeOnLoad]
 public static class AOGGameplayVerticalSliceAutoSetup
 {
-    private const string SessionKey = "AOG.GameplayVerticalSliceAutoSetup.v3";
+    private const string SessionKey = "AOG.GameplayVerticalSliceAutoSetup.v4";
 
     static AOGGameplayVerticalSliceAutoSetup()
     {
@@ -16,20 +16,35 @@ public static class AOGGameplayVerticalSliceAutoSetup
         EditorApplication.delayCall += RunOncePerSession;
     }
 
+    private static bool CanMutateScene()
+    {
+        return !Application.isPlaying &&
+               !EditorApplication.isPlaying &&
+               !EditorApplication.isPlayingOrWillChangePlaymode &&
+               !EditorApplication.isCompiling &&
+               !EditorApplication.isUpdating;
+    }
+
     [MenuItem("Aura of Gods/Setup MOBA Gameplay Camera")]
     public static void SetupCurrentScene()
     {
+        if (!CanMutateScene())
+        {
+            Debug.LogWarning("AOG gameplay camera setup cannot run during Play Mode or compilation.");
+            return;
+        }
+
         Scene scene = SceneManager.GetActiveScene();
         if (!scene.IsValid() || !scene.isLoaded)
             return;
 
-        if (SetupScene(scene) && !string.IsNullOrEmpty(scene.path))
+        if (SetupScene(scene) && CanMutateScene() && !string.IsNullOrEmpty(scene.path))
             EditorSceneManager.SaveScene(scene);
     }
 
     private static void RunOncePerSession()
     {
-        if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
+        if (!CanMutateScene())
             return;
 
         if (SessionState.GetBool(SessionKey, false))
@@ -39,29 +54,40 @@ public static class AOGGameplayVerticalSliceAutoSetup
 
         for (int i = 0; i < SceneManager.sceneCount; i++)
         {
+            if (!CanMutateScene())
+                return;
+
             Scene scene = SceneManager.GetSceneAt(i);
             if (!scene.IsValid() || !scene.isLoaded)
                 continue;
 
-            if (SetupScene(scene) && !string.IsNullOrEmpty(scene.path))
+            if (SetupScene(scene) && CanMutateScene() && !string.IsNullOrEmpty(scene.path))
                 EditorSceneManager.SaveScene(scene);
         }
     }
 
     private static void OnSceneOpened(Scene scene, OpenSceneMode mode)
     {
-        if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
+        if (!CanMutateScene())
             return;
 
         EditorApplication.delayCall += () =>
         {
-            if (scene.IsValid() && scene.isLoaded && SetupScene(scene) && !string.IsNullOrEmpty(scene.path))
+            // A scene can be opened in Edit Mode and the delayed callback can fire after
+            // Play Mode begins. Never mutate or dirty an editor scene in that state.
+            if (!CanMutateScene())
+                return;
+
+            if (scene.IsValid() && scene.isLoaded && SetupScene(scene) && CanMutateScene() && !string.IsNullOrEmpty(scene.path))
                 EditorSceneManager.SaveScene(scene);
         };
     }
 
     private static bool SetupScene(Scene scene)
     {
+        if (!CanMutateScene() || !scene.IsValid() || !scene.isLoaded)
+            return false;
+
         bool changed = RemoveLegacyReadabilityObjects(scene);
         Camera camera = FindGameplayCamera(scene);
         if (camera == null)
@@ -138,7 +164,7 @@ public static class AOGGameplayVerticalSliceAutoSetup
             changed = true;
         }
 
-        if (changed)
+        if (changed && CanMutateScene())
         {
             EditorUtility.SetDirty(camera);
             EditorUtility.SetDirty(controller);
@@ -150,6 +176,9 @@ public static class AOGGameplayVerticalSliceAutoSetup
 
     private static bool RemoveLegacyReadabilityObjects(Scene scene)
     {
+        if (!CanMutateScene())
+            return false;
+
         bool changed = false;
 
         foreach (GameObject root in scene.GetRootGameObjects())
@@ -158,6 +187,8 @@ public static class AOGGameplayVerticalSliceAutoSetup
         AOGPremiumUnitAnimator[] legacyAnimators = Object.FindObjectsByType<AOGPremiumUnitAnimator>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (AOGPremiumUnitAnimator animator in legacyAnimators)
         {
+            if (!CanMutateScene())
+                return false;
             if (animator == null || animator.gameObject.scene != scene)
                 continue;
 
@@ -174,7 +205,7 @@ public static class AOGGameplayVerticalSliceAutoSetup
 
     private static bool RemoveLegacyRecursive(Transform current)
     {
-        if (current == null)
+        if (!CanMutateScene() || current == null)
             return false;
 
         bool changed = false;

@@ -9,7 +9,7 @@ using UnityEngine.SceneManagement;
 [InitializeOnLoad]
 public static class AOGLegacyRosterAutoMigration
 {
-    private const string SessionKey = "AOG.LegacyRosterMigration.KeepLyraRemoveRagnar.v2";
+    private const string SessionKey = "AOG.LegacyRosterMigration.KeepLyraRemoveRagnar.v3";
     private const string LyraProfilePath = "Assets/Resources/AOGChampions/Lyra_Presentation.asset";
 
     static AOGLegacyRosterAutoMigration()
@@ -19,18 +19,36 @@ public static class AOGLegacyRosterAutoMigration
         EditorApplication.delayCall += RunInitialMigration;
     }
 
+    private static bool CanMutateEditorAssets()
+    {
+        return !Application.isPlaying &&
+               !EditorApplication.isPlaying &&
+               !EditorApplication.isPlayingOrWillChangePlaymode &&
+               !EditorApplication.isCompiling &&
+               !EditorApplication.isUpdating;
+    }
+
     [MenuItem("Aura of Gods/Repair Current Scene - Keep Lyra Remove Ragnar")]
     public static void RepairCurrentSceneNow()
     {
+        if (!CanMutateEditorAssets())
+        {
+            Debug.LogWarning("AOG roster repair is editor-only and cannot run during Play Mode or compilation.");
+            return;
+        }
+
         AOGChampionPresentationBuilder.EnsureGeneratedAssets();
 
         Scene activeScene = SceneManager.GetActiveScene();
         if (activeScene.IsValid() && activeScene.isLoaded)
         {
             bool changed = RepairScene(activeScene);
-            if (changed)
+            if (changed && CanMutateEditorAssets())
                 EditorSceneManager.SaveScene(activeScene);
         }
+
+        if (!CanMutateEditorAssets())
+            return;
 
         RepairAllPrefabs();
         AssetDatabase.SaveAssets();
@@ -40,7 +58,7 @@ public static class AOGLegacyRosterAutoMigration
 
     private static void RunInitialMigration()
     {
-        if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling)
+        if (!CanMutateEditorAssets())
             return;
 
         if (SessionState.GetBool(SessionKey, false))
@@ -51,14 +69,20 @@ public static class AOGLegacyRosterAutoMigration
 
         for (int i = 0; i < SceneManager.sceneCount; i++)
         {
+            if (!CanMutateEditorAssets())
+                return;
+
             Scene scene = SceneManager.GetSceneAt(i);
             if (!scene.IsValid() || !scene.isLoaded)
                 continue;
 
             bool changed = RepairScene(scene);
-            if (changed && !string.IsNullOrEmpty(scene.path))
+            if (changed && CanMutateEditorAssets() && !string.IsNullOrEmpty(scene.path))
                 EditorSceneManager.SaveScene(scene);
         }
+
+        if (!CanMutateEditorAssets())
+            return;
 
         RepairAllPrefabs();
         AssetDatabase.SaveAssets();
@@ -67,23 +91,30 @@ public static class AOGLegacyRosterAutoMigration
 
     private static void OnSceneOpened(Scene scene, OpenSceneMode mode)
     {
-        if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling)
+        if (!CanMutateEditorAssets())
             return;
 
         EditorApplication.delayCall += () =>
         {
+            // The delayed callback may fire after Play Mode has already started.
+            if (!CanMutateEditorAssets())
+                return;
+
             if (!scene.IsValid() || !scene.isLoaded)
                 return;
 
             AOGChampionPresentationBuilder.EnsureGeneratedAssets();
             bool changed = RepairScene(scene);
-            if (changed && !string.IsNullOrEmpty(scene.path))
+            if (changed && CanMutateEditorAssets() && !string.IsNullOrEmpty(scene.path))
                 EditorSceneManager.SaveScene(scene);
         };
     }
 
     private static bool RepairScene(Scene scene)
     {
+        if (!CanMutateEditorAssets() || !scene.IsValid() || !scene.isLoaded)
+            return false;
+
         bool changed = false;
         List<GameObject> ragnarObjects = new List<GameObject>();
 
@@ -96,6 +127,8 @@ public static class AOGLegacyRosterAutoMigration
 
         foreach (GameObject ragnar in ragnarObjects)
         {
+            if (!CanMutateEditorAssets())
+                return false;
             if (ragnar == null)
                 continue;
 
@@ -103,7 +136,7 @@ public static class AOGLegacyRosterAutoMigration
             changed = true;
         }
 
-        if (changed)
+        if (changed && CanMutateEditorAssets())
             EditorSceneManager.MarkSceneDirty(scene);
 
         return changed;
@@ -126,7 +159,7 @@ public static class AOGLegacyRosterAutoMigration
 
     private static bool RemoveMissingScriptsRecursive(GameObject gameObject)
     {
-        if (gameObject == null)
+        if (!CanMutateEditorAssets() || gameObject == null)
             return false;
 
         bool changed = false;
@@ -145,7 +178,7 @@ public static class AOGLegacyRosterAutoMigration
 
     private static bool RepairLyraRecursive(GameObject gameObject)
     {
-        if (gameObject == null)
+        if (!CanMutateEditorAssets() || gameObject == null)
             return false;
 
         bool changed = false;
@@ -160,10 +193,11 @@ public static class AOGLegacyRosterAutoMigration
 
     private static bool RepairLyraObject(GameObject lyraObject)
     {
+        if (!CanMutateEditorAssets())
+            return false;
+
         AOGPlayerMOBAController playerController = lyraObject.GetComponent<AOGPlayerMOBAController>();
         AOGCharacterStats stats = lyraObject.GetComponent<AOGCharacterStats>();
-
-        // Ignore child meshes/textures that happen to contain Lyra in their name.
         if (playerController == null && stats == null)
             return false;
 
@@ -256,10 +290,15 @@ public static class AOGLegacyRosterAutoMigration
 
     private static void RepairAllPrefabs()
     {
-        string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets" });
+        if (!CanMutateEditorAssets())
+            return;
 
+        string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets" });
         foreach (string guid in prefabGuids)
         {
+            if (!CanMutateEditorAssets())
+                return;
+
             string path = AssetDatabase.GUIDToAssetPath(guid);
             if (string.IsNullOrEmpty(path))
                 continue;
@@ -283,7 +322,6 @@ public static class AOGLegacyRosterAutoMigration
 
                     if (ragnar == root)
                     {
-                        // A prefab whose root itself is Ragnar is removed as an asset after unloading.
                         changed = false;
                         PrefabUtility.UnloadPrefabContents(root);
                         root = null;
@@ -295,7 +333,7 @@ public static class AOGLegacyRosterAutoMigration
                     changed = true;
                 }
 
-                if (root != null && changed)
+                if (root != null && changed && CanMutateEditorAssets())
                     PrefabUtility.SaveAsPrefabAsset(root, path);
             }
             catch (Exception exception)

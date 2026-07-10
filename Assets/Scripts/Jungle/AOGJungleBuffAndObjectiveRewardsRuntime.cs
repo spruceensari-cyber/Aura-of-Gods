@@ -162,9 +162,16 @@ public class AOGObjectiveRewardTrackerRuntime : MonoBehaviour
         if (sourceStats != null) lastHittingTeam = sourceStats.team;
     }
 
+    public void ResetForRespawn()
+    {
+        rewarded = false;
+        lastHittingTeam = null;
+        if (boss == null) boss = GetComponent<AOGNeutralBossAI>();
+    }
+
     public static void ApplyTeamReward(MinionTeam team,AOGTemporaryBuffType type,float duration)
     {
-        foreach (AOGTeamMemberIdentity member in FindObjectsByType<AOGTeamMemberIdentity>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGTeamMemberIdentity member in AOGWorldRegistry.TeamMembers)
         {
             if (member == null || member.team != team) continue;
             AOGJungleBuffRuntime buff = member.GetComponent<AOGJungleBuffRuntime>();
@@ -224,9 +231,9 @@ public class AOGJungleBuffBootstrap : MonoBehaviour
     private void Update()
     {
         if (Time.unscaledTime<nextScan) return; nextScan=Time.unscaledTime+0.8f;
-        foreach (AOGNeutralMonsterRuntime monster in FindObjectsByType<AOGNeutralMonsterRuntime>(FindObjectsInactive.Include,FindObjectsSortMode.None))
+        foreach (AOGNeutralMonsterRuntime monster in AOGWorldRegistry.NeutralMonsters)
             if (monster!=null && monster.GetComponent<AOGNeutralCampBuffRewardRuntime>()==null) monster.gameObject.AddComponent<AOGNeutralCampBuffRewardRuntime>();
-        foreach (AOGNeutralBossAI boss in FindObjectsByType<AOGNeutralBossAI>(FindObjectsInactive.Include,FindObjectsSortMode.None))
+        foreach (AOGNeutralBossAI boss in AOGWorldRegistry.Bosses)
             if (boss!=null && boss.GetComponent<AOGObjectiveRewardTrackerRuntime>()==null) boss.gameObject.AddComponent<AOGObjectiveRewardTrackerRuntime>();
     }
 }

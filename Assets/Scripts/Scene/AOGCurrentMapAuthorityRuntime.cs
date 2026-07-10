@@ -1,12 +1,19 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 [DefaultExecutionOrder(-2000)]
 public class AOGCurrentMapAuthorityRuntime : MonoBehaviour
 {
-    private static readonly string[] LegacyMapRoots =
+    private static readonly string[] PreferredMapNames =
+    {
+        "AOG_Symmetric_Reference_Map",
+        "AOGSymmetricReferenceMap",
+        "Map",
+        "Terrain"
+    };
+
+    private static readonly string[] ExplicitLegacyMapRoots =
     {
         "AOG_VisualMap",
         "AOG_ArtPass_RealGameLook",
@@ -23,6 +30,8 @@ public class AOGCurrentMapAuthorityRuntime : MonoBehaviour
         SceneManager.sceneLoaded -= OnSceneLoaded;
         SceneManager.sceneLoaded += OnSceneLoaded;
         EnsureInstance();
+        if (instance != null)
+            instance.StartCoroutine(instance.ResolveAfterSceneReady());
     }
 
     private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -44,63 +53,125 @@ public class AOGCurrentMapAuthorityRuntime : MonoBehaviour
 
     private IEnumerator ResolveAfterSceneReady()
     {
-        yield return new WaitForSecondsRealtime(0.45f);
-        ResolveMapAuthority();
-        yield return new WaitForSecondsRealtime(0.75f);
+        // Runtime-generated map objects may appear over several frames.
+        yield return null;
+        yield return new WaitForSecondsRealtime(0.20f);
+        RestorePlayableWorld();
+        yield return new WaitForSecondsRealtime(0.80f);
+        RestorePlayableWorld();
         RebindGameplayToCurrentMap();
     }
 
-    private void ResolveMapAuthority()
+    private void RestorePlayableWorld()
     {
-        Transform currentMap = FindTransformByExactName("AOG_Symmetric_Reference_Map");
-        if (currentMap != null)
-            currentMap.gameObject.SetActive(true);
+        Transform authoritativeMap = FindBestPlayableMap();
 
-        foreach (string legacyName in LegacyMapRoots)
+        if (authoritativeMap != null)
         {
-            Transform legacy = FindTransformByExactName(legacyName);
-            if (legacy != null && legacy != currentMap)
-                legacy.gameObject.SetActive(false);
+            authoritativeMap.gameObject.SetActive(true);
+            SetParentsActive(authoritativeMap);
+
+            // Only disable explicitly named legacy roots and only when a valid authoritative map exists.
+            foreach (string legacyName in ExplicitLegacyMapRoots)
+            {
+                Transform legacy = FindTransformByExactName(legacyName);
+                if (legacy != null && legacy != authoritativeMap && !authoritativeMap.IsChildOf(legacy))
+                    legacy.gameObject.SetActive(false);
+            }
+        }
+        else
+        {
+            // Safety fallback: never leave the game with an invisible world.
+            // Re-enable likely scene map/terrain roots rather than guessing and disabling them.
+            foreach (GameObject root in SceneManager.GetActiveScene().GetRootGameObjects())
+            {
+                if (root == null)
+                    continue;
+
+                string lower = root.name.ToLowerInvariant();
+                bool likelyWorld = lower.Contains("map") || lower.Contains("terrain") || lower.Contains("ground") || lower.Contains("lane");
+                if (likelyWorld)
+                    root.SetActive(true);
+            }
+        }
+    }
+
+    private Transform FindBestPlayableMap()
+    {
+        foreach (string preferredName in PreferredMapNames)
+        {
+            Transform exact = FindTransformByExactName(preferredName);
+            if (exact != null)
+                return exact;
         }
 
-        // Disable duplicate full-map roots that contain ground + lane structures but are not the authoritative map.
+        Transform best = null;
+        int bestScore = -1;
         foreach (GameObject root in SceneManager.GetActiveScene().GetRootGameObjects())
         {
-            if (root == null || !root.activeSelf || root.transform == currentMap)
+            if (root == null)
                 continue;
 
-            string lower = root.name.ToLowerInvariant();
-            bool suspiciousMap = lower.Contains("map") &&
-                                 (FindChildContains(root.transform, "lane") || FindChildContains(root.transform, "ground"));
-            if (suspiciousMap && !lower.Contains("game") && !lower.Contains("waypoint"))
-                root.SetActive(false);
+            int score = ScorePlayableWorld(root.transform);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = root.transform;
+            }
         }
+
+        return bestScore >= 3 ? best : null;
+    }
+
+    private int ScorePlayableWorld(Transform root)
+    {
+        int score = 0;
+        string rootName = root.name.ToLowerInvariant();
+        if (rootName.Contains("map")) score += 2;
+        if (rootName.Contains("terrain")) score += 2;
+        if (FindChildContains(root, "lane")) score += 2;
+        if (FindChildContains(root, "ground")) score += 1;
+        if (FindChildContains(root, "tower")) score += 1;
+        if (FindChildContains(root, "nexus")) score += 1;
+        return score;
     }
 
     private void RebindGameplayToCurrentMap()
     {
         MinionSpawner spawner = FindFirstObjectByType<MinionSpawner>();
-        if (spawner == null)
-            return;
-
-        if (spawner.blueBaseSpawn == null)
-            spawner.blueBaseSpawn = FindNamedTransform("BlueBaseSpawn", "BlueSpawn", "Blue_Spawn");
-        if (spawner.redBaseSpawn == null)
-            spawner.redBaseSpawn = FindNamedTransform("RedBaseSpawn", "RedSpawn", "Red_Spawn");
+        if (spawner != null)
+        {
+            if (spawner.blueBaseSpawn == null)
+                spawner.blueBaseSpawn = FindNamedTransform("BlueBaseSpawn", "BlueSpawn", "Blue_Spawn");
+            if (spawner.redBaseSpawn == null)
+                spawner.redBaseSpawn = FindNamedTransform("RedBaseSpawn", "RedSpawn", "Red_Spawn");
+        }
 
         Camera camera = Camera.main;
-        if (camera != null)
+        AOGActiveChampion active = AOGActiveChampion.Current;
+        if (camera != null && active != null && active.IsActiveChampion)
         {
             AOGMobaCameraController controller = camera.GetComponent<AOGMobaCameraController>();
-            if (controller != null && AOGActiveChampion.Current != null)
-                controller.SetTarget(AOGActiveChampion.Current.transform, true);
+            if (controller != null)
+                controller.SetTarget(active.transform, true);
+        }
+    }
+
+    private static void SetParentsActive(Transform child)
+    {
+        Transform current = child;
+        while (current != null)
+        {
+            if (!current.gameObject.activeSelf)
+                current.gameObject.SetActive(true);
+            current = current.parent;
         }
     }
 
     private static Transform FindTransformByExactName(string exactName)
     {
         foreach (GameObject obj in FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            if (obj != null && obj.name == exactName)
+            if (obj != null && string.Equals(obj.name, exactName, System.StringComparison.OrdinalIgnoreCase))
                 return obj.transform;
         return null;
     }

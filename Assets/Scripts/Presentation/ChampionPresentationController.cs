@@ -19,6 +19,7 @@ public class ChampionPresentationController : MonoBehaviour
     private AOGChampionProceduralAnimator proceduralAnimator;
     private AOGAutoAttackPresentationRuntime autoAttackPresentation;
     private AOGAbilityCastAnticipationRuntime castAnticipation;
+    private AOGDamageIntentRuntime damageIntent;
 
     public float BasicAttackWindup => profile != null ? profile.basicAttackWindup : 0.22f;
     public float BasicAttackRecovery => profile != null ? profile.basicAttackRecovery : 0.18f;
@@ -36,6 +37,11 @@ public class ChampionPresentationController : MonoBehaviour
         if (audioController == null) audioController = GetComponent<ChampionAudioController>();
         if (proceduralAnimator == null) proceduralAnimator = GetComponent<AOGChampionProceduralAnimator>();
         if (autoAttackPresentation == null) autoAttackPresentation = GetComponent<AOGAutoAttackPresentationRuntime>();
+        if (damageIntent == null)
+        {
+            damageIntent = GetComponent<AOGDamageIntentRuntime>();
+            if (damageIntent == null) damageIntent = gameObject.AddComponent<AOGDamageIntentRuntime>();
+        }
         if (castAnticipation == null)
         {
             castAnticipation = GetComponent<AOGAbilityCastAnticipationRuntime>();
@@ -80,6 +86,7 @@ public class ChampionPresentationController : MonoBehaviour
     {
         if (dead) return;
         ResolveReferences();
+        damageIntent?.BeginBasicAttack();
 
         int variantCount = profile != null ? Mathf.Clamp(profile.basicAttackVariants, 1, 3) : 3;
         int next = variantCount == 1 ? 0 : Random.Range(0, variantCount);
@@ -101,10 +108,12 @@ public class ChampionPresentationController : MonoBehaviour
     {
         if (dead) return;
         ResolveReferences();
-        castAnticipation?.PlayAnticipation(Mathf.Clamp(slot,0,3));
+        int resolvedSlot = Mathf.Clamp(slot,0,3);
+        damageIntent?.BeginAbility(resolvedSlot);
+        castAnticipation?.PlayAnticipation(resolvedSlot);
 
         string trigger;
-        switch (slot)
+        switch (resolvedSlot)
         {
             case 0: trigger = ProfileString(p => p.qTrigger, "SkillQ"); break;
             case 1: trigger = ProfileString(p => p.wTrigger, "SkillW"); break;
@@ -112,8 +121,8 @@ public class ChampionPresentationController : MonoBehaviour
             default: trigger = ProfileString(p => p.rTrigger, "SkillR"); break;
         }
         SetTrigger(trigger);
-        proceduralAnimator?.PlaySkill(Mathf.Clamp(slot, 0, 3));
-        audioController?.PlayAbilityCast(Mathf.Clamp(slot, 0, 3));
+        proceduralAnimator?.PlaySkill(resolvedSlot);
+        audioController?.PlayAbilityCast(resolvedSlot);
     }
 
     public void PlayHitReaction()

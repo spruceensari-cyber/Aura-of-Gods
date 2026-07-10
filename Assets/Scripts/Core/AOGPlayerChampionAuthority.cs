@@ -68,6 +68,8 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
             candidate.SetActiveChampion(isSelected);
 
             AOGUnifiedMobaInputDriver input = candidate.GetComponent<AOGUnifiedMobaInputDriver>();
+            if (isSelected && input == null)
+                input = candidate.gameObject.AddComponent<AOGUnifiedMobaInputDriver>();
             if (input != null)
                 input.enabled = isSelected;
 
@@ -90,6 +92,11 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
         MoveToBlueRoleSpawn(selected.transform, role);
         selected.SetActiveChampion(true);
         currentChampion = selected;
+
+        AOGUnifiedMobaInputDriver selectedInput = selected.GetComponent<AOGUnifiedMobaInputDriver>();
+        if (selectedInput == null)
+            selectedInput = selected.gameObject.AddComponent<AOGUnifiedMobaInputDriver>();
+        selectedInput.enabled = true;
 
         Camera camera = Camera.main;
         if (camera != null)

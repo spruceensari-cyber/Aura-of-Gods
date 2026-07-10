@@ -5,21 +5,22 @@ using UnityEngine.SceneManagement;
 [DefaultExecutionOrder(-10000)]
 public class AOGPlayableSceneBootstrap : MonoBehaviour
 {
+    private const string PlayableSceneName = "AOGSymmetricReferenceMap_TowerTest";
     private static bool loadingPlayableScene;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
     {
         Scene active = SceneManager.GetActiveScene();
-        if (!active.IsValid())
+        if (!active.IsValid() || loadingPlayableScene)
             return;
 
-        // Unity can enter Play Mode from an unsaved 'Untitled' scene. In that case
-        // runtime systems may bootstrap while the actual gameplay map is absent.
         bool unsavedScene = string.IsNullOrEmpty(active.path) ||
                             string.Equals(active.name, "Untitled", System.StringComparison.OrdinalIgnoreCase);
+        bool fallbackSampleScene = string.Equals(active.name, "SampleScene", System.StringComparison.OrdinalIgnoreCase);
+        bool alreadyPlayable = string.Equals(active.name, PlayableSceneName, System.StringComparison.OrdinalIgnoreCase);
 
-        if (!unsavedScene || loadingPlayableScene)
+        if (alreadyPlayable || (!unsavedScene && !fallbackSampleScene))
             return;
 
         GameObject host = new GameObject("AOG_Playable_Scene_Bootstrap");
@@ -38,10 +39,12 @@ public class AOGPlayableSceneBootstrap : MonoBehaviour
         loadingPlayableScene = true;
         yield return null;
 
-        AsyncOperation operation = SceneManager.LoadSceneAsync("SampleScene", LoadSceneMode.Single);
+        AsyncOperation operation = SceneManager.LoadSceneAsync(PlayableSceneName, LoadSceneMode.Single);
         if (operation == null)
         {
-            Debug.LogError("AOG: Could not load SampleScene. Ensure Assets/Scenes/SampleScene.unity is enabled in Build Settings.");
+            Debug.LogError(
+                "AOG: Could not load the playable scene '" + PlayableSceneName +
+                "'. Ensure Assets/Scenes/AOGSymmetricReferenceMap_TowerTest.unity is enabled in Build Settings.");
             loadingPlayableScene = false;
             Destroy(gameObject);
             yield break;

@@ -22,6 +22,7 @@ public class AOGBotChampionAI : MonoBehaviour
     private float nextAbility;
     private Transform currentTarget;
     private Vector3 spawnPoint;
+    private AOGCharacterStats protectedCarry;
 
     private void Awake()
     {
@@ -47,59 +48,112 @@ public class AOGBotChampionAI : MonoBehaviour
     private void Think()
     {
         float hpRatio = stats.hp / Mathf.Max(1f, stats.maxHp);
-        if (hpRatio <= retreatHpRatio)
+        if (hpRatio <= EffectiveRetreatRatio())
         {
             currentTarget = null;
             return;
         }
 
-        AOGCharacterStats enemyHero = FindNearestEnemyHero(heroAggroRange);
-        if (enemyHero != null)
+        if (role == AOGBotRole.Support)
         {
-            currentTarget = enemyHero.transform;
+            protectedCarry = FindAlliedCarry(18f);
+            AOGCharacterStats threat = protectedCarry != null ? FindEnemyNearPoint(protectedCarry.transform.position, 7.5f) : null;
+            currentTarget = threat != null ? threat.transform : null;
             return;
         }
 
-        Minion enemyMinion = FindNearestEnemyMinion(7f);
-        if (enemyMinion != null)
+        if (role == AOGBotRole.Carry)
         {
-            currentTarget = enemyMinion.transform;
+            AOGCharacterStats threat = FindNearestEnemyHero(heroAggroRange);
+            if (threat != null)
+            {
+                currentTarget = threat.transform;
+                return;
+            }
+
+            Minion safeFarm = FindNearestEnemyMinion(8.5f);
+            if (safeFarm != null)
+            {
+                currentTarget = safeFarm.transform;
+                return;
+            }
+
+            TowerHealth safeTower = FindNearestEnemyTower(11f);
+            currentTarget = safeTower != null ? safeTower.transform : null;
             return;
         }
 
-        TowerHealth tower = FindNearestEnemyTower(10f);
-        if (tower != null)
+        if (role == AOGBotRole.Mid)
         {
-            currentTarget = tower.transform;
+            AOGCharacterStats enemyHero = FindNearestEnemyHero(heroAggroRange + 1.5f);
+            if (enemyHero != null)
+            {
+                currentTarget = enemyHero.transform;
+                return;
+            }
+
+            Minion waveTarget = FindNearestEnemyMinion(8f);
+            if (waveTarget != null)
+            {
+                currentTarget = waveTarget.transform;
+                return;
+            }
+
+            currentTarget = null;
             return;
         }
 
-        currentTarget = null;
+        AOGCharacterStats enemy = FindNearestEnemyHero(heroAggroRange);
+        if (enemy != null)
+        {
+            currentTarget = enemy.transform;
+            return;
+        }
+
+        Minion minion = FindNearestEnemyMinion(7f);
+        if (minion != null)
+        {
+            currentTarget = minion.transform;
+            return;
+        }
+
+        TowerHealth tower = FindNearestEnemyTower(role == AOGBotRole.Top ? 12f : 10f);
+        currentTarget = tower != null ? tower.transform : null;
     }
 
     private void Act()
     {
         float hpRatio = stats.hp / Mathf.Max(1f, stats.maxHp);
-        if (hpRatio <= retreatHpRatio)
+        if (hpRatio <= EffectiveRetreatRatio())
         {
             MoveToward(spawnPoint, stats.moveSpeed * 0.9f);
             return;
         }
 
+        if (role == AOGBotRole.Support && currentTarget == null)
+        {
+            FollowCarryOrLane();
+            return;
+        }
+
         if (currentTarget != null && currentTarget.gameObject.activeInHierarchy)
         {
+            if (role == AOGBotRole.Carry && TryMaintainCarrySpacing(currentTarget))
+                return;
+
             float distance = FlatDistance(transform.position, currentTarget.position);
             float range = stats.attackRange;
 
             if (distance > range)
             {
-                MoveToward(currentTarget.position, stats.moveSpeed);
+                MoveToward(currentTarget.position, stats.moveSpeed * RoleMoveMultiplier());
                 if (distance <= abilityRange && Time.time >= nextAbility)
                     UseAbility(currentTarget.position);
             }
             else
             {
                 Face(currentTarget.position);
+                presentation?.SetPlanarVelocity(Vector3.zero);
                 if (Time.time >= nextAttack)
                 {
                     nextAttack = Time.time + stats.attackCooldown;
@@ -107,6 +161,65 @@ public class AOGBotChampionAI : MonoBehaviour
                     ResolveBasicAttack(currentTarget);
                 }
             }
+            return;
+        }
+
+        if (role == AOGBotRole.Mid && ShouldRoam())
+        {
+            AOGCharacterStats roamTarget = FindWeakEnemyHero(28f);
+            if (roamTarget != null)
+            {
+                MoveToward(roamTarget.transform.position, stats.moveSpeed * 1.03f);
+                return;
+            }
+        }
+
+        FollowLane();
+    }
+
+    private bool TryMaintainCarrySpacing(Transform threat)
+    {
+        AOGCharacterStats enemyHero = threat.GetComponentInParent<AOGCharacterStats>();
+        if (enemyHero == null)
+            return false;
+
+        float distance = FlatDistance(transform.position, enemyHero.transform.position);
+        float desiredMin = Mathf.Max(3.8f, stats.attackRange * 0.68f);
+        if (distance >= desiredMin)
+            return false;
+
+        Vector3 away = transform.position - enemyHero.transform.position;
+        away.y = 0f;
+        if (away.sqrMagnitude < 0.01f) away = -transform.forward;
+        MoveToward(transform.position + away.normalized * 4f, stats.moveSpeed * 1.08f);
+        return true;
+    }
+
+    private void FollowCarryOrLane()
+    {
+        if (protectedCarry == null || protectedCarry.IsDead)
+            protectedCarry = FindAlliedCarry(24f);
+
+        if (protectedCarry != null)
+        {
+            float distance = FlatDistance(transform.position, protectedCarry.transform.position);
+            if (distance > 4.8f)
+            {
+                Vector3 offset = protectedCarry.transform.position - protectedCarry.transform.forward * 2.2f;
+                MoveToward(offset, stats.moveSpeed * 0.98f);
+                return;
+            }
+
+            if (stats.hp < stats.maxHp * 0.92f && Time.time >= nextAbility)
+            {
+                nextAbility = Time.time + 7.5f;
+                stats.hp = Mathf.Min(stats.maxHp, stats.hp + 34f);
+                protectedCarry.hp = Mathf.Min(protectedCarry.maxHp, protectedCarry.hp + 46f);
+                Color c = team == MinionTeam.Blue ? new Color(0.24f,0.76f,1f) : new Color(1f,0.30f,0.36f);
+                GameObject ring = AOGAbilityVisuals.CreateRing("Support_Protection_Pulse", protectedCarry.transform.position + Vector3.up * 0.05f, 1.7f, c, 0.08f);
+                Destroy(ring,0.4f);
+            }
+            presentation?.SetPlanarVelocity(Vector3.zero);
             return;
         }
 
@@ -125,24 +238,27 @@ public class AOGBotChampionAI : MonoBehaviour
         if (FlatDistance(transform.position, target.position) < 1.5f && pathIndex < lanePath.Length - 1)
             pathIndex++;
 
-        MoveToward(lanePath[pathIndex].position, stats.moveSpeed * 0.92f);
+        MoveToward(lanePath[pathIndex].position, stats.moveSpeed * 0.92f * RoleMoveMultiplier());
     }
 
     private void UseAbility(Vector3 point)
     {
-        nextAbility = Time.time + 5.5f + (int)role * 0.25f;
+        nextAbility = Time.time + RoleAbilityCooldown();
         presentation?.PlayAbility((int)role % 3);
         Color c = team == MinionTeam.Blue ? new Color(0.18f, 0.58f, 1f) : new Color(1f, 0.18f, 0.24f);
-        GameObject ring = AOGAbilityVisuals.CreateRing("Bot_Ability_Telegraph", point + Vector3.up * 0.06f, 2.2f, c, 0.10f);
+        float radius = role == AOGBotRole.Top ? 2.8f : role == AOGBotRole.Mid ? 2.4f : 2.2f;
+        GameObject ring = AOGAbilityVisuals.CreateRing("Bot_Ability_Telegraph", point + Vector3.up * 0.06f, radius, c, 0.10f);
         Destroy(ring, 0.42f);
 
-        foreach (Collider hit in Physics.OverlapSphere(point, 2.2f, ~0, QueryTriggerInteraction.Ignore))
+        foreach (Collider hit in Physics.OverlapSphere(point, radius, ~0, QueryTriggerInteraction.Ignore))
         {
             Minion minion = hit.GetComponentInParent<Minion>();
-            if (minion != null && minion.team != team) minion.TakeDamage(stats.attackDamage * 1.35f, gameObject);
+            if (minion != null && minion.team != team && role != AOGBotRole.Support)
+                minion.TakeDamage(stats.attackDamage * (role == AOGBotRole.Mid ? 1.55f : 1.25f), gameObject);
 
             AOGCharacterStats hero = hit.GetComponentInParent<AOGCharacterStats>();
-            if (hero != null && hero != stats && hero.team != team) hero.TakeDamage(stats.attackDamage * 1.10f);
+            if (hero != null && hero != stats && hero.team != team)
+                hero.TakeDamage(stats.attackDamage * (role == AOGBotRole.Top ? 1.2f : 1.1f), gameObject);
         }
     }
 
@@ -151,20 +267,21 @@ public class AOGBotChampionAI : MonoBehaviour
         Minion minion = target.GetComponentInParent<Minion>();
         if (minion != null && minion.team != team)
         {
-            minion.TakeDamage(stats.attackDamage, gameObject);
+            if (role != AOGBotRole.Support)
+                minion.TakeDamage(stats.attackDamage, gameObject);
             return;
         }
 
         AOGCharacterStats hero = target.GetComponentInParent<AOGCharacterStats>();
         if (hero != null && hero != stats && hero.team != team)
         {
-            hero.TakeDamage(stats.attackDamage);
+            hero.TakeDamage(stats.attackDamage, gameObject);
             return;
         }
 
         TowerHealth tower = target.GetComponentInParent<TowerHealth>();
         if (tower != null && tower.towerTeam != team)
-            tower.TakeDamage(stats.attackDamage * 0.75f);
+            tower.TakeDamage(stats.attackDamage * (role == AOGBotRole.Top ? 0.90f : 0.75f));
     }
 
     private AOGCharacterStats FindNearestEnemyHero(float range)
@@ -176,6 +293,49 @@ public class AOGBotChampionAI : MonoBehaviour
             if (hero == null || hero == stats || hero.IsDead || hero.team == team) continue;
             float d = FlatDistance(transform.position, hero.transform.position);
             if (d < bestDist) { best = hero; bestDist = d; }
+        }
+        return best;
+    }
+
+    private AOGCharacterStats FindEnemyNearPoint(Vector3 point,float range)
+    {
+        AOGCharacterStats best = null;
+        float bestDist = range;
+        foreach (AOGCharacterStats hero in FindObjectsByType<AOGCharacterStats>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        {
+            if (hero == null || hero == stats || hero.IsDead || hero.team == team) continue;
+            float d = FlatDistance(point,hero.transform.position);
+            if (d < bestDist) { best=hero; bestDist=d; }
+        }
+        return best;
+    }
+
+    private AOGCharacterStats FindWeakEnemyHero(float range)
+    {
+        AOGCharacterStats best = null;
+        float bestScore = float.MaxValue;
+        foreach (AOGCharacterStats hero in FindObjectsByType<AOGCharacterStats>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        {
+            if (hero == null || hero == stats || hero.IsDead || hero.team == team) continue;
+            float distance = FlatDistance(transform.position,hero.transform.position);
+            if (distance > range) continue;
+            float score = hero.hp / Mathf.Max(1f,hero.maxHp) + distance / range * 0.45f;
+            if (score < bestScore) { best=hero; bestScore=score; }
+        }
+        return best;
+    }
+
+    private AOGCharacterStats FindAlliedCarry(float range)
+    {
+        AOGCharacterStats best = null;
+        float bestDist = range;
+        foreach (AOGTeamMemberIdentity member in FindObjectsByType<AOGTeamMemberIdentity>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        {
+            if (member == null || member.team != team || member.role != AOGRole.ADC) continue;
+            AOGCharacterStats ally = member.GetComponent<AOGCharacterStats>();
+            if (ally == null || ally.IsDead) continue;
+            float d = FlatDistance(transform.position,ally.transform.position);
+            if (d < bestDist) { best=ally; bestDist=d; }
         }
         return best;
     }
@@ -204,6 +364,37 @@ public class AOGBotChampionAI : MonoBehaviour
             if (d < bestDist) { best = tower; bestDist = d; }
         }
         return best;
+    }
+
+    private float EffectiveRetreatRatio()
+    {
+        if (role == AOGBotRole.Carry) return Mathf.Max(retreatHpRatio,0.34f);
+        if (role == AOGBotRole.Support) return Mathf.Max(retreatHpRatio,0.31f);
+        if (role == AOGBotRole.Top) return Mathf.Min(retreatHpRatio,0.22f);
+        return retreatHpRatio;
+    }
+
+    private float RoleMoveMultiplier()
+    {
+        if (role == AOGBotRole.Mid) return 1.03f;
+        if (role == AOGBotRole.Carry) return 0.98f;
+        if (role == AOGBotRole.Top) return 0.95f;
+        return 1f;
+    }
+
+    private float RoleAbilityCooldown()
+    {
+        if (role == AOGBotRole.Mid) return 4.8f;
+        if (role == AOGBotRole.Top) return 6.2f;
+        if (role == AOGBotRole.Support) return 7.5f;
+        return 5.8f;
+    }
+
+    private bool ShouldRoam()
+    {
+        if (role != AOGBotRole.Mid || lanePath == null || lanePath.Length == 0) return false;
+        bool nearbyWave = FindNearestEnemyMinion(9f) != null;
+        return !nearbyWave && pathIndex >= Mathf.Max(0,lanePath.Length/3);
     }
 
     private void MoveToward(Vector3 point, float speed)

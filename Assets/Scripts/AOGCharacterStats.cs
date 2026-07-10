@@ -25,8 +25,10 @@ public class AOGCharacterStats : MonoBehaviour
     private Vector3 fallbackSpawnPosition;
     private Quaternion fallbackSpawnRotation;
     private GameObject lastDamageSource;
+    private float respawnCompleteTime;
 
     public bool IsDead => hp <= 0f || deathStarted;
+    public float RespawnRemaining => IsDead ? Mathf.Max(0f, respawnCompleteTime - Time.time) : 0f;
 
     private void Start()
     {
@@ -77,6 +79,11 @@ public class AOGCharacterStats : MonoBehaviour
         hp = 0f;
         presentation?.PlayDeath();
 
+        AOGChampionProgression progression = GetComponent<AOGChampionProgression>();
+        int level = progression != null ? progression.level : 1;
+        float respawnTime = baseRespawnTime + Mathf.Max(0, level - 1) * 0.65f;
+        respawnCompleteTime = Time.time + deathPresentationDuration + respawnTime;
+
         AOGChampionDamageLedger ledger = GetComponent<AOGChampionDamageLedger>();
         List<GameObject> assistants = ledger != null ? ledger.CollectAssistants(killer) : new List<GameObject>();
         AOGCombatEvents.RaiseChampionDeath(new AOGChampionDeathEvent
@@ -87,19 +94,15 @@ public class AOGCharacterStats : MonoBehaviour
         });
 
         SetGameplayEnabled(false);
-        StartCoroutine(RespawnSequence());
+        StartCoroutine(RespawnSequence(respawnTime));
     }
 
-    private IEnumerator RespawnSequence()
+    private IEnumerator RespawnSequence(float respawnTime)
     {
         if (deathPresentationDuration > 0f)
             yield return new WaitForSeconds(deathPresentationDuration);
 
         SetRenderersVisible(false);
-
-        AOGChampionProgression progression = GetComponent<AOGChampionProgression>();
-        int level = progression != null ? progression.level : 1;
-        float respawnTime = baseRespawnTime + Mathf.Max(0, level - 1) * 0.65f;
         yield return new WaitForSeconds(respawnTime);
 
         Transform spawn = FindTeamSpawn();
@@ -116,6 +119,7 @@ public class AOGCharacterStats : MonoBehaviour
 
         hp = maxHp;
         deathStarted = false;
+        respawnCompleteTime = 0f;
         lastDamageSource = null;
         AOGChampionDamageLedger ledger = GetComponent<AOGChampionDamageLedger>();
         ledger?.ClearLedger();

@@ -18,6 +18,7 @@ public class ChampionPresentationController : MonoBehaviour
     private AOGMobaCameraController cameraController;
     private AOGChampionProceduralAnimator proceduralAnimator;
     private AOGAutoAttackPresentationRuntime autoAttackPresentation;
+    private AOGAbilityCastAnticipationRuntime castAnticipation;
 
     public float BasicAttackWindup => profile != null ? profile.basicAttackWindup : 0.22f;
     public float BasicAttackRecovery => profile != null ? profile.basicAttackRecovery : 0.18f;
@@ -35,6 +36,12 @@ public class ChampionPresentationController : MonoBehaviour
         if (audioController == null) audioController = GetComponent<ChampionAudioController>();
         if (proceduralAnimator == null) proceduralAnimator = GetComponent<AOGChampionProceduralAnimator>();
         if (autoAttackPresentation == null) autoAttackPresentation = GetComponent<AOGAutoAttackPresentationRuntime>();
+        if (castAnticipation == null)
+        {
+            castAnticipation = GetComponent<AOGAbilityCastAnticipationRuntime>();
+            if (castAnticipation == null)
+                castAnticipation = gameObject.AddComponent<AOGAbilityCastAnticipationRuntime>();
+        }
         if (cameraController == null && Camera.main != null) cameraController = Camera.main.GetComponent<AOGMobaCameraController>();
     }
 
@@ -94,6 +101,8 @@ public class ChampionPresentationController : MonoBehaviour
     {
         if (dead) return;
         ResolveReferences();
+        castAnticipation?.PlayAnticipation(Mathf.Clamp(slot,0,3));
+
         string trigger;
         switch (slot)
         {

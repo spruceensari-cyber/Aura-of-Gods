@@ -1,7 +1,10 @@
+using System;
 using UnityEngine;
 
 public class TowerHealth : MonoBehaviour
 {
+    public static event Action<TowerHealth> TowerDestroyed;
+
     public MinionTeam towerTeam;
 
     [Header("Health")]
@@ -40,22 +43,17 @@ public class TowerHealth : MonoBehaviour
         Debug.Log(name + " kule hasar aldı. HP: " + hp + " / " + maxHp);
 
         if (hp <= 0f)
-        {
             Die();
-        }
     }
 
     void Die()
     {
         Debug.Log(name + " kule yok oldu.");
+        TowerDestroyed?.Invoke(this);
 
         if (destroyOnDeath)
-        {
             Destroy(gameObject);
-        }
         else
-        {
             gameObject.SetActive(false);
-        }
     }
 }

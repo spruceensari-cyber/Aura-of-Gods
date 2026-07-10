@@ -5,7 +5,7 @@ using UnityEngine.UI;
 /// <summary>
 /// Enhances the existing competitive HUD in-place. It does not create a competing primary HUD.
 /// Binds timer/gold to live match data and adds dynamic minimap markers for champions,
-/// structures, camps and objectives.
+/// structures, camps, objectives and wards. Enemy/neutral markers respect team vision.
 /// </summary>
 public class AOGCompetitiveHudLiveDataRuntime : MonoBehaviour
 {
@@ -48,7 +48,7 @@ public class AOGCompetitiveHudLiveDataRuntime : MonoBehaviour
 
         if (Time.unscaledTime >= nextRefresh)
         {
-            nextRefresh = Time.unscaledTime + 0.25f;
+            nextRefresh = Time.unscaledTime + 0.20f;
             RefreshWorldMarkers();
         }
 
@@ -85,24 +85,29 @@ public class AOGCompetitiveHudLiveDataRuntime : MonoBehaviour
 
     private void UpdateObjectivePanel()
     {
-        AOGNeutralBossAI dragon = null;
-        AOGNeutralBossAI medusa = null;
-        foreach (AOGNeutralBossAI boss in FindObjectsByType<AOGNeutralBossAI>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        // AOGObjectiveTimerHudRuntime owns exact respawn strings when present. This fallback only
+        // handles sessions where the lifecycle HUD has not attached yet.
+        if (FindFirstObjectByType<AOGObjectiveTimerHudRuntime>() == null)
         {
-            if (boss == null || boss.GetComponent<AOGVoidTitanMarker>() != null) continue;
-            if (boss.bossType == AOGNeutralBossType.Dragon) dragon = boss;
-            else medusa = boss;
-        }
+            AOGNeutralBossAI dragon = null;
+            AOGNeutralBossAI medusa = null;
+            foreach (AOGNeutralBossAI boss in AOGWorldRegistry.Bosses)
+            {
+                if (boss == null || boss.GetComponent<AOGVoidTitanMarker>() != null) continue;
+                if (boss.bossType == AOGNeutralBossType.Dragon) dragon = boss;
+                else medusa = boss;
+            }
 
-        AOGVoidTitanMarker titan = FindFirstObjectByType<AOGVoidTitanMarker>();
-        if (objectiveOne != null)
-            objectiveOne.text = dragon == null ? "◇ DRAGON  UNSEEN" : dragon.IsDead ? "◇ DRAGON  DEFEATED" : "◆ DRAGON  ACTIVE";
+            AOGVoidTitanMarker titan = FindFirstObjectByType<AOGVoidTitanMarker>();
+            if (objectiveOne != null)
+                objectiveOne.text = dragon == null ? "◇ DRAGON  UNSEEN" : dragon.IsDead ? "◇ DRAGON  DEFEATED" : "◆ DRAGON  ACTIVE";
 
-        if (objectiveTwo != null)
-        {
-            string medusaState = medusa == null ? "UNSEEN" : medusa.IsDead ? "DEFEATED" : "ACTIVE";
-            string titanState = titan == null ? "LOCKED" : "ACTIVE";
-            objectiveTwo.text = "◇ MEDUSA  " + medusaState + "   |   TITAN  " + titanState;
+            if (objectiveTwo != null)
+            {
+                string medusaState = medusa == null ? "UNSEEN" : medusa.IsDead ? "DEFEATED" : "ACTIVE";
+                string titanState = titan == null ? "LOCKED" : "ACTIVE";
+                objectiveTwo.text = "◇ MEDUSA  " + medusaState + "   |   TITAN  " + titanState;
+            }
         }
 
         if (hintText != null)
@@ -111,7 +116,12 @@ public class AOGCompetitiveHudLiveDataRuntime : MonoBehaviour
             AOGActiveChampion player = AOGPlayerChampionAuthority.CurrentChampion;
             if (player != null)
                 shopAvailable = AOGBaseAccessUtility.IsShopAvailable(player.GetComponent<AOGPlayerEconomy>());
-            hintText.text = shopAvailable ? "P: MARKET   B: RECALL   SHOP READY" : "P: BROWSE   B: RECALL   SHOP OUT OF RANGE";
+
+            AOGWardPlacementRuntime ward = player != null ? player.GetComponent<AOGWardPlacementRuntime>() : null;
+            string wardState = ward == null || ward.CooldownRemaining <= 0f ? "WARD READY" : "WARD " + Mathf.CeilToInt(ward.CooldownRemaining) + "s";
+            hintText.text = shopAvailable
+                ? "P: MARKET   B: RECALL   4: " + wardState + "   SHOP READY"
+                : "P: BROWSE   B: RECALL   4: " + wardState;
         }
     }
 
@@ -119,23 +129,28 @@ public class AOGCompetitiveHudLiveDataRuntime : MonoBehaviour
     {
         if (minimap == null) return;
 
+        MinionTeam viewerTeam = AOGVisionAuthorityRuntime.PlayerTeam;
         HashSet<Object> seen = new HashSet<Object>();
 
-        foreach (AOGTeamMemberIdentity member in FindObjectsByType<AOGTeamMemberIdentity>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGTeamMemberIdentity member in AOGWorldRegistry.TeamMembers)
         {
             if (member == null) continue;
+            bool allied = member.team == viewerTeam;
+            if (!allied && !AOGVisionAuthorityRuntime.IsVisibleToTeam(member.transform.position,viewerTeam))
+                continue;
+
             seen.Add(member);
             EnsureMarker(member, member.team == MinionTeam.Blue ? new Color(0.18f,0.62f,1f) : new Color(1f,0.20f,0.26f), 14f, member.isHumanPlayer ? "▲" : "●");
         }
 
-        foreach (TowerHealth tower in FindObjectsByType<TowerHealth>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (TowerHealth tower in AOGWorldRegistry.Towers)
         {
             if (tower == null || tower.hp <= 0f || tower.GetComponent<AOGSealCombatTargetAdapter>() != null) continue;
             seen.Add(tower);
             EnsureMarker(tower, tower.towerTeam == MinionTeam.Blue ? new Color(0.26f,0.70f,1f) : new Color(1f,0.30f,0.34f), 11f, "■");
         }
 
-        foreach (AOGStrategicLaneSeal seal in FindObjectsByType<AOGStrategicLaneSeal>(FindObjectsInactive.Include,FindObjectsSortMode.None))
+        foreach (AOGStrategicLaneSeal seal in AOGWorldRegistry.Seals)
         {
             if (seal == null) continue;
             seen.Add(seal);
@@ -143,19 +158,28 @@ public class AOGCompetitiveHudLiveDataRuntime : MonoBehaviour
             EnsureMarker(seal,c,10f,"◇");
         }
 
-        foreach (AOGNeutralMonsterRuntime monster in FindObjectsByType<AOGNeutralMonsterRuntime>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGNeutralMonsterRuntime monster in AOGWorldRegistry.NeutralMonsters)
         {
             if (monster == null || monster.IsDead) continue;
+            if (!AOGVisionAuthorityRuntime.IsVisibleToTeam(monster.transform.position,viewerTeam)) continue;
             seen.Add(monster);
             EnsureMarker(monster,new Color(0.46f,0.82f,0.48f),7f,"•");
         }
 
-        foreach (AOGNeutralBossAI boss in FindObjectsByType<AOGNeutralBossAI>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGNeutralBossAI boss in AOGWorldRegistry.Bosses)
         {
             if (boss == null || boss.IsDead) continue;
+            if (!AOGVisionAuthorityRuntime.IsVisibleToTeam(boss.transform.position,viewerTeam)) continue;
             seen.Add(boss);
             Color c = boss.GetComponent<AOGVoidTitanMarker>() != null ? new Color(0.62f,0.26f,0.96f) : boss.bossType == AOGNeutralBossType.Dragon ? new Color(1f,0.42f,0.10f) : new Color(0.66f,0.34f,0.92f);
             EnsureMarker(boss,c,15f,"◆");
+        }
+
+        foreach (AOGWardRuntime ward in AOGVisionAuthorityRuntime.ActiveWards)
+        {
+            if (ward == null || ward.team != viewerTeam) continue;
+            seen.Add(ward);
+            EnsureMarker(ward,new Color(0.48f,0.88f,1f),10f,"✦");
         }
 
         List<Object> stale = new List<Object>();
@@ -177,6 +201,7 @@ public class AOGCompetitiveHudLiveDataRuntime : MonoBehaviour
         {
             Text text = existing.GetComponent<Text>();
             if (text != null) text.color = color;
+            existing.gameObject.SetActive(true);
             return;
         }
 

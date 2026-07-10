@@ -157,7 +157,7 @@ public class AOGRoleBasedTeamRuntime : MonoBehaviour
         Transform baseSpawn = team == MinionTeam.Blue ? spawner.blueBaseSpawn : spawner.redBaseSpawn;
         Vector3 origin = baseSpawn != null ? baseSpawn.position : Vector3.zero;
         float direction = team == MinionTeam.Blue ? 1f : -1f;
-        return origin + role switch
+        Vector3 offset = role switch
         {
             AOGRole.Top => new Vector3(-3.5f,0.2f,3.2f*direction),
             AOGRole.Jungle => new Vector3(-1.6f,0.2f,2.2f*direction),
@@ -165,6 +165,7 @@ public class AOGRoleBasedTeamRuntime : MonoBehaviour
             AOGRole.ADC => new Vector3(1.8f,0.2f,2.4f*direction),
             _ => new Vector3(3.3f,0.2f,3.0f*direction)
         };
+        return origin + offset;
     }
 
     private static Transform[] ResolvePath(AOGRole role, MinionTeam team, MinionSpawner spawner)

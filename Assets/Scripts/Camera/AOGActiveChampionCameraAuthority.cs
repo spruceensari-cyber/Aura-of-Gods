@@ -115,7 +115,6 @@ public class AOGActiveChampionCameraAuthority : MonoBehaviour
         controller.edgePanSpeed = 0f;
         controller.maxPanDistanceFromTarget = 0f;
         controller.panReturnSpeed = 100f;
-        controller.middleDragEnabled = false;
         controller.forwardFramingBias = 0.50f;
         controller.targetLookAhead = 0.05f;
         controller.maxLookAheadDistance = 0.65f;

@@ -22,7 +22,8 @@ public class AOGPlayableSceneBootstrap : MonoBehaviour
 
         GameObject host = new GameObject("AOG_Playable_Scene_Bootstrap");
         DontDestroyOnLoad(host);
-        host.AddComponent<AOGPlayableSceneBootstrap>().StartCoroutine(LoadPlayableScene());
+        AOGPlayableSceneBootstrap bootstrap = host.AddComponent<AOGPlayableSceneBootstrap>();
+        bootstrap.StartCoroutine(bootstrap.LoadPlayableScene());
     }
 
     private IEnumerator LoadPlayableScene()

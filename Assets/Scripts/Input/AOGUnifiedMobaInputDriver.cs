@@ -25,6 +25,7 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
     private bool hasMoveTarget;
     private AOGCharacterStats targetHero;
     private Minion targetMinion;
+    private AOGNeutralMonsterRuntime targetNeutralMonster;
     private TowerHealth targetTower;
     private AOGNexusCore targetNexus;
     private AOGNeutralBossAI targetBoss;
@@ -169,6 +170,16 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
                 return true;
             }
 
+            AOGNeutralMonsterRuntime neutral = hit.collider.GetComponentInParent<AOGNeutralMonsterRuntime>();
+            if (neutral != null && !neutral.IsDead)
+            {
+                ClearTargets();
+                targetNeutralMonster = neutral;
+                hasMoveTarget = false;
+                ShowTargetRing(neutral.transform, AOGNeutralCreatureModelFactory.AccentFor(neutral.monsterType), 1.0f);
+                return true;
+            }
+
             Minion minion = hit.collider.GetComponentInParent<Minion>();
             if (minion != null && minion.hp > 0f && minion.team != stats.team)
             {
@@ -226,6 +237,7 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
 
             if (hit.collider.GetComponentInParent<AOGCharacterStats>() != null ||
                 hit.collider.GetComponentInParent<Minion>() != null ||
+                hit.collider.GetComponentInParent<AOGNeutralMonsterRuntime>() != null ||
                 hit.collider.GetComponentInParent<TowerHealth>() != null ||
                 hit.collider.GetComponentInParent<AOGNexusCore>() != null ||
                 hit.collider.GetComponentInParent<AOGNeutralBossAI>() != null)
@@ -287,6 +299,20 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
             }
             AOGCharacterStats locked = targetHero;
             AttackOrChase(locked.transform, stats.attackRange, () => StartCoroutine(HitHeroAfterWindup(locked, CurrentWindup())));
+            return;
+        }
+
+        if (targetNeutralMonster != null)
+        {
+            if (targetNeutralMonster.IsDead || !targetNeutralMonster.gameObject.activeInHierarchy)
+            {
+                targetNeutralMonster = null;
+                HideTargetRing();
+                return;
+            }
+            AOGNeutralMonsterRuntime locked = targetNeutralMonster;
+            float range = Mathf.Max(stats.attackRange, 2.4f);
+            AttackOrChase(locked.transform, range, () => StartCoroutine(HitNeutralAfterWindup(locked, CurrentWindup(), range)));
             return;
         }
 
@@ -378,6 +404,17 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
         attackRoutine = null;
     }
 
+    private IEnumerator HitNeutralAfterWindup(AOGNeutralMonsterRuntime target, float windup, float allowedRange)
+    {
+        if (windup > 0f) yield return new WaitForSeconds(windup);
+        if (target != null && !target.IsDead && FlatDistance(transform.position,target.transform.position) <= allowedRange + attackRangeTolerance)
+        {
+            target.TakeDamage(stats.attackDamage, gameObject);
+            PlayAttackImpact(target.transform.position + Vector3.up * 1.0f);
+        }
+        attackRoutine = null;
+    }
+
     private IEnumerator HitMinionAfterWindup(Minion target, float windup)
     {
         if (windup > 0f) yield return new WaitForSeconds(windup);
@@ -463,6 +500,7 @@ public class AOGUnifiedMobaInputDriver : MonoBehaviour
     {
         targetHero = null;
         targetMinion = null;
+        targetNeutralMonster = null;
         targetTower = null;
         targetNexus = null;
         targetBoss = null;

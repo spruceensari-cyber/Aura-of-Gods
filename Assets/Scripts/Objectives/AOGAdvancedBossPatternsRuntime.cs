@@ -13,6 +13,14 @@ public class AOGAdvancedBossPatternsRuntime : MonoBehaviour
         nextSpecial=Time.time+5f;
     }
 
+    public void ResetForRespawn()
+    {
+        StopAllCoroutines();
+        casting=false;
+        nextSpecial=Time.time+5f;
+        if (boss==null) boss=GetComponent<AOGNeutralBossAI>();
+    }
+
     private void Update()
     {
         if (boss==null || boss.IsDead || casting) return;
@@ -71,7 +79,7 @@ public class AOGAdvancedBossPatternsRuntime : MonoBehaviour
     private AOGCharacterStats FindNearestChampion(float radius)
     {
         AOGCharacterStats best=null; float bestDistance=radius;
-        foreach (AOGCharacterStats hero in FindObjectsByType<AOGCharacterStats>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGCharacterStats hero in AOGWorldRegistry.Characters)
         {
             if (hero==null || hero.IsDead) continue;
             Vector3 a=transform.position;a.y=0f; Vector3 b=hero.transform.position;b.y=0f;
@@ -92,6 +100,15 @@ public class AOGVoidTitanCombatRuntime : MonoBehaviour
     private bool casting;
 
     private void Awake() { boss=GetComponent<AOGNeutralBossAI>(); }
+
+    public void ResetForRespawn()
+    {
+        StopAllCoroutines();
+        casting=false;
+        patternIndex=0;
+        nextAttack=Time.time+4f;
+        if (boss==null) boss=GetComponent<AOGNeutralBossAI>();
+    }
 
     private void Update()
     {
@@ -145,7 +162,7 @@ public class AOGVoidTitanCombatRuntime : MonoBehaviour
         float end=Time.time+2.8f;
         while (Time.time<end)
         {
-            foreach (AOGCharacterStats hero in FindObjectsByType<AOGCharacterStats>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+            foreach (AOGCharacterStats hero in AOGWorldRegistry.Characters)
             {
                 if (hero==null || hero.IsDead) continue;
                 Vector3 delta=transform.position-hero.transform.position; delta.y=0f;
@@ -161,7 +178,7 @@ public class AOGVoidTitanCombatRuntime : MonoBehaviour
     private AOGCharacterStats FindTarget(float radius)
     {
         AOGCharacterStats best=null; float bestDistance=radius;
-        foreach (AOGCharacterStats hero in FindObjectsByType<AOGCharacterStats>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGCharacterStats hero in AOGWorldRegistry.Characters)
         {
             if (hero==null || hero.IsDead) continue;
             Vector3 a=transform.position;a.y=0f; Vector3 b=hero.transform.position;b.y=0f;
@@ -240,7 +257,7 @@ public class AOGAdvancedBossPatternBootstrap : MonoBehaviour
     private void Update()
     {
         if (Time.unscaledTime<nextScan) return; nextScan=Time.unscaledTime+0.8f;
-        foreach (AOGNeutralBossAI boss in FindObjectsByType<AOGNeutralBossAI>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGNeutralBossAI boss in AOGWorldRegistry.Bosses)
         {
             if (boss==null || boss.GetComponent<AOGVoidTitanMarker>()!=null) continue;
             if (boss.GetComponent<AOGAdvancedBossPatternsRuntime>()==null) boss.gameObject.AddComponent<AOGAdvancedBossPatternsRuntime>();

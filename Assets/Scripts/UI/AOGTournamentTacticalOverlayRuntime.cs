@@ -210,7 +210,7 @@ public class AOGTournamentTacticalOverlayRuntime : MonoBehaviour
         string dragon="DRAGON: UNSEEN";
         string medusa="MEDUSA: UNSEEN";
         string titan="TITAN: LOCKED";
-        foreach(AOGNeutralBossAI boss in FindObjectsByType<AOGNeutralBossAI>(FindObjectsInactive.Include,FindObjectsSortMode.None))
+        foreach(AOGNeutralBossAI boss in AOGWorldRegistry.Bosses)
         {
             if(boss==null)continue;
             if(boss.GetComponent<AOGVoidTitanMarker>()!=null)titan="TITAN: "+(boss.IsDead?"DOWN":"ACTIVE");
@@ -219,7 +219,7 @@ public class AOGTournamentTacticalOverlayRuntime : MonoBehaviour
         }
 
         int blueSeals=0;int redSeals=0;
-        foreach(AOGStrategicLaneSeal seal in FindObjectsByType<AOGStrategicLaneSeal>(FindObjectsInactive.Include,FindObjectsSortMode.None))
+        foreach(AOGStrategicLaneSeal seal in AOGWorldRegistry.Seals)
         {
             if(seal==null||seal.State!=AOGSealState.Active)continue;
             if(seal.team==MinionTeam.Blue)blueSeals++;else redSeals++;

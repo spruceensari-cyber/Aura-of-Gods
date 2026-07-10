@@ -106,7 +106,7 @@ public class AOGBotRecallRoleShoppingRuntime : MonoBehaviour
 
     private bool IsSafeToRecall()
     {
-        foreach (AOGCharacterStats hero in FindObjectsByType<AOGCharacterStats>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGCharacterStats hero in AOGWorldRegistry.Characters)
         {
             if (hero == null || hero == stats || hero.IsDead || hero.team == stats.team) continue;
             if (FlatDistance(transform.position,hero.transform.position) <= safeEnemyRadius)
@@ -318,7 +318,7 @@ public class AOGBotRecallRoleShoppingBootstrap : MonoBehaviour
         if (Time.unscaledTime < nextScan) return;
         nextScan = Time.unscaledTime + 0.75f;
 
-        foreach (AOGTeamMemberIdentity member in FindObjectsByType<AOGTeamMemberIdentity>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (AOGTeamMemberIdentity member in AOGWorldRegistry.TeamMembers)
         {
             if (member == null || member.isHumanPlayer) continue;
             if (member.GetComponent<AOGBotRecallRoleShoppingRuntime>() == null)

@@ -93,10 +93,7 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
         selected.SetActiveChampion(true);
         currentChampion = selected;
 
-        AOGUnifiedMobaInputDriver selectedInput = selected.GetComponent<AOGUnifiedMobaInputDriver>();
-        if (selectedInput == null)
-            selectedInput = selected.gameObject.AddComponent<AOGUnifiedMobaInputDriver>();
-        selectedInput.enabled = true;
+        EnsureSinglePlayerCombatDriver(selected);
 
         Camera camera = Camera.main;
         if (camera != null)
@@ -118,6 +115,8 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
         if (currentChampion == null || !currentChampion.gameObject.activeInHierarchy)
             return;
 
+        EnsureSinglePlayerCombatDriver(currentChampion);
+
         Camera camera = Camera.main;
         if (camera == null)
             return;
@@ -125,6 +124,33 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
         AOGMobaCameraController controller = camera.GetComponent<AOGMobaCameraController>();
         if (controller != null && controller.target != currentChampion.transform)
             controller.SetTarget(currentChampion.transform, false);
+    }
+
+    private static void EnsureSinglePlayerCombatDriver(AOGActiveChampion selected)
+    {
+        if (selected == null)
+            return;
+
+        AOGUnifiedMobaInputDriver unified = selected.GetComponent<AOGUnifiedMobaInputDriver>();
+        if (unified == null)
+            unified = selected.gameObject.AddComponent<AOGUnifiedMobaInputDriver>();
+        unified.enabled = true;
+
+        AOGEnemyTargetSelectionRuntime legacyTargeting = selected.GetComponent<AOGEnemyTargetSelectionRuntime>();
+        if (legacyTargeting != null)
+            legacyTargeting.enabled = false;
+
+        AOGPassiveLaneAutoAttackRuntime passiveAutoAttack = selected.GetComponent<AOGPassiveLaneAutoAttackRuntime>();
+        if (passiveAutoAttack != null)
+            passiveAutoAttack.enabled = false;
+
+        PlayerAutoAttack oldAuto = selected.GetComponent<PlayerAutoAttack>();
+        if (oldAuto != null)
+            oldAuto.enabled = false;
+
+        PlayerAttack oldAttack = selected.GetComponent<PlayerAttack>();
+        if (oldAttack != null)
+            oldAttack.enabled = false;
     }
 
     private static void MoveToBlueRoleSpawn(Transform champion, AOGRole role)

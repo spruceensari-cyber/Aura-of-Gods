@@ -145,12 +145,12 @@ public class AOGItemPassiveCombatRuntime : MonoBehaviour
         if (hit.targetKind==AOGCombatTargetKind.NeutralMonster)
         {
             AOGNeutralMonsterRuntime monster=hit.target.GetComponentInParent<AOGNeutralMonsterRuntime>();
-            return monster!=null?monster.HpRatio:-1f;
+            return monster!=null?monster.hp/Mathf.Max(1f,monster.maxHp):-1f;
         }
         if (hit.targetKind==AOGCombatTargetKind.Boss)
         {
             AOGNeutralBossAI boss=hit.target.GetComponentInParent<AOGNeutralBossAI>();
-            return boss!=null?boss.HpRatio:-1f;
+            return boss!=null?boss.hp/Mathf.Max(1f,boss.maxHp):-1f;
         }
         return -1f;
     }

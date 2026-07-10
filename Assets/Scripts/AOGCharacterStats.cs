@@ -96,16 +96,25 @@ public class AOGCharacterStats : MonoBehaviour
 
         AOGAbilityVisuals.CreateRing("Champion_Respawn", transform.position + Vector3.up * 0.1f, 2.8f, new Color(0.35f, 0.82f, 1f, 1f), 0.14f);
 
-        Camera camera = Camera.main;
-        if (camera != null)
-            camera.GetComponent<AOGMobaCameraController>()?.SetTarget(transform, true);
+        AOGActiveChampion marker = GetComponent<AOGActiveChampion>();
+        bool isHumanPlayer = marker != null && AOGPlayerChampionAuthority.CurrentChampion == marker;
+        if (isHumanPlayer)
+        {
+            Camera camera = Camera.main;
+            if (camera != null)
+                camera.GetComponent<AOGMobaCameraController>()?.SetTarget(transform, true);
+        }
     }
 
     private void SetGameplayEnabled(bool enabled)
     {
         AOGUnifiedMobaInputDriver unified = GetComponent<AOGUnifiedMobaInputDriver>();
         if (unified != null)
-            unified.enabled = enabled;
+        {
+            AOGActiveChampion marker = GetComponent<AOGActiveChampion>();
+            bool isHumanPlayer = marker != null && AOGPlayerChampionAuthority.CurrentChampion == marker;
+            unified.enabled = enabled && isHumanPlayer;
+        }
 
         AOGPlayerMOBAController legacyMoba = GetComponent<AOGPlayerMOBAController>();
         if (legacyMoba != null)

@@ -48,17 +48,28 @@ public class AOGCharacterStats : MonoBehaviour
     }
 
     /// <summary>
-    /// Legacy-compatible default damage path. Unclassified legacy damage is treated as
-    /// Physical so armor can participate without breaking existing call sites.
+    /// Legacy-compatible damage path. Basic attacks remain Physical. When the source has an
+    /// active ability intent, the damage is converted into the hero/slot-specific damage type
+    /// so Armor and Magic Resistance participate without rewriting every legacy skill caller.
     /// </summary>
     public void TakeDamage(float amount, GameObject source)
     {
+        AOGDamageType type = AOGDamageType.Physical;
+        string abilityId = "legacy_damage";
+
+        if (source != null)
+        {
+            AOGDamageIntentRuntime intent = source.GetComponentInParent<AOGDamageIntentRuntime>();
+            if (intent != null)
+                intent.TryResolve(out type,out abilityId);
+        }
+
         TakeDamage(new AOGDamagePacket
         {
             amount=amount,
-            type=AOGDamageType.Physical,
+            type=type,
             source=source,
-            abilityId="legacy_damage"
+            abilityId=abilityId
         });
     }
 
@@ -89,6 +100,16 @@ public class AOGCharacterStats : MonoBehaviour
 
         hp = Mathf.Clamp(hp - resolved, 0f, maxHp);
 
+        AOGDamageResolvedEvents.Raise(new AOGResolvedDamageEvent
+        {
+            source=source,
+            target=this,
+            rawAmount=packet.amount,
+            resolvedAmount=resolved,
+            damageType=packet.type,
+            abilityId=packet.abilityId
+        });
+
         if (hp > 0f)
         {
             presentation?.PlayHitReaction();
@@ -102,7 +123,7 @@ public class AOGCharacterStats : MonoBehaviour
     {
         AOGCharacterStats best = null;
         float bestDistance = 9f;
-        foreach (AOGCharacterStats candidate in FindObjectsByType<AOGCharacterStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        foreach (AOGCharacterStats candidate in AOGWorldRegistry.Characters)
         {
             if (candidate == null || candidate == this || candidate.IsDead || candidate.team == team)
                 continue;

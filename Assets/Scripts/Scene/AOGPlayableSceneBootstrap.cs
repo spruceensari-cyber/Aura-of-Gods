@@ -15,28 +15,35 @@ public class AOGPlayableSceneBootstrap : MonoBehaviour
             return;
 
         // Unity can enter Play Mode from an unsaved 'Untitled' scene. In that case
-        // runtime systems (HUD/heroes/camps) still bootstrap, but the actual map is absent.
-        bool unsavedScene = string.IsNullOrEmpty(active.path) || string.Equals(active.name, "Untitled", System.StringComparison.OrdinalIgnoreCase);
+        // runtime systems may bootstrap while the actual gameplay map is absent.
+        bool unsavedScene = string.IsNullOrEmpty(active.path) ||
+                            string.Equals(active.name, "Untitled", System.StringComparison.OrdinalIgnoreCase);
+
         if (!unsavedScene || loadingPlayableScene)
             return;
 
         GameObject host = new GameObject("AOG_Playable_Scene_Bootstrap");
         DontDestroyOnLoad(host);
-        AOGPlayableSceneBootstrap bootstrap = host.AddComponent<AOGPlayableSceneBootstrap>();
-        bootstrap.StartCoroutine(bootstrap.LoadPlayableScene());
+        host.AddComponent<AOGPlayableSceneBootstrap>();
     }
 
-    private IEnumerator LoadPlayableScene()
+    private void Start()
+    {
+        if (!loadingPlayableScene)
+            StartCoroutine(LoadPlayableSceneRoutine());
+    }
+
+    private IEnumerator LoadPlayableSceneRoutine()
     {
         loadingPlayableScene = true;
         yield return null;
 
-        // SampleScene is the canonical enabled gameplay scene in EditorBuildSettings.
         AsyncOperation operation = SceneManager.LoadSceneAsync("SampleScene", LoadSceneMode.Single);
         if (operation == null)
         {
             Debug.LogError("AOG: Could not load SampleScene. Ensure Assets/Scenes/SampleScene.unity is enabled in Build Settings.");
             loadingPlayableScene = false;
+            Destroy(gameObject);
             yield break;
         }
 

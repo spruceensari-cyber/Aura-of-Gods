@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class AOGCharacterStats : MonoBehaviour
@@ -23,6 +24,7 @@ public class AOGCharacterStats : MonoBehaviour
     private bool deathStarted;
     private Vector3 fallbackSpawnPosition;
     private Quaternion fallbackSpawnRotation;
+    private GameObject lastDamageSource;
 
     public bool IsDead => hp <= 0f || deathStarted;
 
@@ -38,8 +40,22 @@ public class AOGCharacterStats : MonoBehaviour
 
     public void TakeDamage(float amount)
     {
+        TakeDamage(amount, null);
+    }
+
+    public void TakeDamage(float amount, GameObject source)
+    {
         if (deathStarted || amount <= 0f)
             return;
+
+        if (source != null)
+        {
+            lastDamageSource = source;
+            AOGChampionDamageLedger ledger = GetComponent<AOGChampionDamageLedger>();
+            if (ledger == null)
+                ledger = gameObject.AddComponent<AOGChampionDamageLedger>();
+            ledger.RegisterDamage(source);
+        }
 
         hp = Mathf.Clamp(hp - amount, 0f, maxHp);
 
@@ -49,10 +65,10 @@ public class AOGCharacterStats : MonoBehaviour
             return;
         }
 
-        Die();
+        Die(source);
     }
 
-    private void Die()
+    private void Die(GameObject killer)
     {
         if (deathStarted)
             return;
@@ -60,6 +76,15 @@ public class AOGCharacterStats : MonoBehaviour
         deathStarted = true;
         hp = 0f;
         presentation?.PlayDeath();
+
+        AOGChampionDamageLedger ledger = GetComponent<AOGChampionDamageLedger>();
+        List<GameObject> assistants = ledger != null ? ledger.CollectAssistants(killer) : new List<GameObject>();
+        AOGCombatEvents.RaiseChampionDeath(new AOGChampionDeathEvent
+        {
+            victim = this,
+            killer = killer != null ? killer : lastDamageSource,
+            assistants = assistants
+        });
 
         SetGameplayEnabled(false);
         StartCoroutine(RespawnSequence());
@@ -91,6 +116,9 @@ public class AOGCharacterStats : MonoBehaviour
 
         hp = maxHp;
         deathStarted = false;
+        lastDamageSource = null;
+        AOGChampionDamageLedger ledger = GetComponent<AOGChampionDamageLedger>();
+        ledger?.ClearLedger();
         SetRenderersVisible(true);
         SetGameplayEnabled(true);
 

@@ -250,7 +250,7 @@ public class AOGObjectiveTimerHudRuntime : MonoBehaviour
     private void RefreshLine(Text label,string key)
     {
         if (label == null) return;
-        AOGObjectiveLifecycleSnapshot state;
+        AOGObjectiveLifecycleSnapshot state = default;
         bool found = AOGObjectiveLifecycleRuntime.Instance != null && AOGObjectiveLifecycleRuntime.Instance.TryGetSnapshot(key,out state);
         if (!found)
         {

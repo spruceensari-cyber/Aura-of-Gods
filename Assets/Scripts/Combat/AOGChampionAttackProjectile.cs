@@ -334,12 +334,12 @@ public class AOGChampionAttackProjectile : MonoBehaviour
         if (style == AOGChampionProjectileStyle.SpiritOrb)
         {
             for (int i=0;i<3;i++)
-                SpawnImpactOrb(transform.position+Random.insideUnitSphere*0.35f,0.11f+0.03f*i,Color.Lerp(accentColor,Color.white,0.35f),0.36f);
+                SpawnImpactOrb(transform.position+UnityEngine.Random.insideUnitSphere*0.35f,0.11f+0.03f*i,Color.Lerp(accentColor,Color.white,0.35f),0.36f);
         }
         else if (style == AOGChampionProjectileStyle.FlameOrb)
         {
             for (int i=0;i<4;i++)
-                SpawnImpactShard(transform.position,Quaternion.Euler(Random.Range(-30f,30f),i*90f,Random.Range(-40f,40f)),new Vector3(0.05f,0.72f,0.05f),Color.Lerp(accentColor,new Color(1f,0.55f,0.08f),0.45f),0.40f);
+                SpawnImpactShard(transform.position,Quaternion.Euler(UnityEngine.Random.Range(-30f,30f),i*90f,UnityEngine.Random.Range(-40f,40f)),new Vector3(0.05f,0.72f,0.05f),Color.Lerp(accentColor,new Color(1f,0.55f,0.08f),0.45f),0.40f);
         }
         else if (style == AOGChampionProjectileStyle.AstralLance)
         {

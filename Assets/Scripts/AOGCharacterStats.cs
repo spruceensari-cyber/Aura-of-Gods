@@ -21,6 +21,7 @@ public class AOGCharacterStats : MonoBehaviour
     public float moveSpeed = 6f;
 
     private ChampionPresentationController presentation;
+    private AOGCombatStatBlock combatStats;
     private bool deathStarted;
     private Vector3 fallbackSpawnPosition;
     private Quaternion fallbackSpawnRotation;
@@ -36,6 +37,7 @@ public class AOGCharacterStats : MonoBehaviour
             hp = maxHp;
 
         presentation = GetComponent<ChampionPresentationController>();
+        combatStats = GetComponent<AOGCombatStatBlock>();
         fallbackSpawnPosition = transform.position;
         fallbackSpawnRotation = transform.rotation;
     }
@@ -45,11 +47,27 @@ public class AOGCharacterStats : MonoBehaviour
         TakeDamage(amount, null);
     }
 
+    /// <summary>
+    /// Legacy-compatible default damage path. Unclassified legacy damage is treated as
+    /// Physical so armor can participate without breaking existing call sites.
+    /// </summary>
     public void TakeDamage(float amount, GameObject source)
     {
-        if (deathStarted || amount <= 0f)
+        TakeDamage(new AOGDamagePacket
+        {
+            amount=amount,
+            type=AOGDamageType.Physical,
+            source=source,
+            abilityId="legacy_damage"
+        });
+    }
+
+    public void TakeDamage(AOGDamagePacket packet)
+    {
+        if (deathStarted || packet.amount <= 0f)
             return;
 
+        GameObject source = packet.source;
         if (source == null)
             source = ResolveLikelyLegacyDamageSource();
 
@@ -62,7 +80,14 @@ public class AOGCharacterStats : MonoBehaviour
             ledger.RegisterDamage(source);
         }
 
-        hp = Mathf.Clamp(hp - amount, 0f, maxHp);
+        if (combatStats == null)
+            combatStats = GetComponent<AOGCombatStatBlock>();
+
+        float resolved = combatStats != null
+            ? combatStats.ResolveIncomingDamage(packet)
+            : Mathf.Max(0f,packet.amount);
+
+        hp = Mathf.Clamp(hp - resolved, 0f, maxHp);
 
         if (hp > 0f)
         {

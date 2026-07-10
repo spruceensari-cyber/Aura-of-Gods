@@ -31,7 +31,7 @@ public class AOGChampionSelectRecoveryRuntime : MonoBehaviour
     private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         EnsureInstance();
-        if (instance == null)
+        if (instance == null || !instance.isActiveAndEnabled || !instance.gameObject.activeInHierarchy)
             return;
 
         instance.StopAllCoroutines();
@@ -45,6 +45,9 @@ public class AOGChampionSelectRecoveryRuntime : MonoBehaviour
     private IEnumerator Start()
     {
         yield return null;
+        if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+            yield break;
+
         Scene scene = SceneManager.GetActiveScene();
         if (scene.IsValid() && string.Equals(scene.name, PlayableSceneName, System.StringComparison.OrdinalIgnoreCase))
             yield return RecoverPlayableSceneFlow();
@@ -52,13 +55,17 @@ public class AOGChampionSelectRecoveryRuntime : MonoBehaviour
 
     private IEnumerator RecoverPlayableSceneFlow()
     {
-        if (recoveryRunning)
+        if (recoveryRunning || !isActiveAndEnabled || !gameObject.activeInHierarchy)
             yield break;
 
         recoveryRunning = true;
-
-        // Let the gameplay scene, player model and the normal selector initialize first.
         yield return new WaitForSecondsRealtime(0.9f);
+
+        if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+        {
+            recoveryRunning = false;
+            yield break;
+        }
 
         AOGMatchDirector director = AOGMatchDirector.Instance;
         if (director != null && director.State == AOGMatchState.Playing)
@@ -71,8 +78,6 @@ public class AOGChampionSelectRecoveryRuntime : MonoBehaviour
         GameObject selectionCanvas = GameObject.Find("ChampionSelectCanvas");
         if (selectionCanvas == null)
         {
-            // A selector can survive the SampleScene -> gameplay-scene redirect with its
-            // setup coroutine stuck in the previous scene. Recreate only that runtime host.
             AOGChampionSelectionRuntime selector = FindFirstObjectByType<AOGChampionSelectionRuntime>(FindObjectsInactive.Include);
             if (selector != null)
             {
@@ -81,18 +86,22 @@ public class AOGChampionSelectRecoveryRuntime : MonoBehaviour
                 yield return null;
             }
 
+            if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+            {
+                recoveryRunning = false;
+                yield break;
+            }
+
             GameObject host = new GameObject("AOG_Champion_Selection_Runtime");
             host.AddComponent<AOGChampionSelectionRuntime>();
             DontDestroyOnLoad(host);
 
-            // Give the rebuilt selector time to find Lyra/create Kaelith and draw the UI.
             float deadline = Time.unscaledTime + 5f;
             while (Time.unscaledTime < deadline && GameObject.Find("ChampionSelectCanvas") == null)
                 yield return new WaitForSecondsRealtime(0.15f);
         }
 
-        // If the UI still failed, make one final clean retry rather than starting the match silently.
-        if (GameObject.Find("ChampionSelectCanvas") == null)
+        if (GameObject.Find("ChampionSelectCanvas") == null && isActiveAndEnabled && gameObject.activeInHierarchy)
         {
             AOGChampionSelectionRuntime stale = FindFirstObjectByType<AOGChampionSelectionRuntime>(FindObjectsInactive.Include);
             if (stale != null)
@@ -112,6 +121,9 @@ public class AOGChampionSelectRecoveryRuntime : MonoBehaviour
 
     private void StartMinionWaveGuard()
     {
+        if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+            return;
+
         if (!minionWaveGuardRunning)
             StartCoroutine(EnsureFirstMinionWave());
     }
@@ -121,10 +133,15 @@ public class AOGChampionSelectRecoveryRuntime : MonoBehaviour
         minionWaveGuardRunning = true;
 
         while (AOGMatchDirector.Instance == null || AOGMatchDirector.Instance.State != AOGMatchState.Playing)
+        {
+            if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+            {
+                minionWaveGuardRunning = false;
+                yield break;
+            }
             yield return new WaitForSecondsRealtime(0.2f);
+        }
 
-        // The normal MinionSpawner loop waits 1.5 seconds before the first wave.
-        // Allow it plenty of time before intervening.
         yield return new WaitForSeconds(4f);
 
         bool anyLivingMinion = false;

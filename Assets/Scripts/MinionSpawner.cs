@@ -41,7 +41,7 @@ public class MinionSpawner : MonoBehaviour
 
         yield return new WaitForSeconds(1.5f);
 
-        while (true)
+        while (AOGMatchDirector.Instance != null && AOGMatchDirector.Instance.State == AOGMatchState.Playing)
         {
             StartWave();
             yield return new WaitForSeconds(waveRate);
@@ -68,16 +68,16 @@ public class MinionSpawner : MonoBehaviour
 
         waveNumber++;
 
-        StartCoroutine(SpawnWave(blueMinionPrefab, MinionTeam.Blue, BuildBluePath(topLaneWaypoints), "Blue Top"));
-        StartCoroutine(SpawnWave(blueMinionPrefab, MinionTeam.Blue, BuildBluePath(midLaneWaypoints), "Blue Mid"));
-        StartCoroutine(SpawnWave(blueMinionPrefab, MinionTeam.Blue, BuildBluePath(botLaneWaypoints), "Blue Bot"));
+        StartCoroutine(SpawnWave(blueMinionPrefab, MinionTeam.Blue, BuildBluePath(topLaneWaypoints), "Blue Top", AOGSealLane.Top));
+        StartCoroutine(SpawnWave(blueMinionPrefab, MinionTeam.Blue, BuildBluePath(midLaneWaypoints), "Blue Mid", AOGSealLane.Mid));
+        StartCoroutine(SpawnWave(blueMinionPrefab, MinionTeam.Blue, BuildBluePath(botLaneWaypoints), "Blue Bot", AOGSealLane.Bot));
 
-        StartCoroutine(SpawnWave(redMinionPrefab, MinionTeam.Red, BuildRedPath(topLaneWaypoints), "Red Top"));
-        StartCoroutine(SpawnWave(redMinionPrefab, MinionTeam.Red, BuildRedPath(midLaneWaypoints), "Red Mid"));
-        StartCoroutine(SpawnWave(redMinionPrefab, MinionTeam.Red, BuildRedPath(botLaneWaypoints), "Red Bot"));
+        StartCoroutine(SpawnWave(redMinionPrefab, MinionTeam.Red, BuildRedPath(topLaneWaypoints), "Red Top", AOGSealLane.Top));
+        StartCoroutine(SpawnWave(redMinionPrefab, MinionTeam.Red, BuildRedPath(midLaneWaypoints), "Red Mid", AOGSealLane.Mid));
+        StartCoroutine(SpawnWave(redMinionPrefab, MinionTeam.Red, BuildRedPath(botLaneWaypoints), "Red Bot", AOGSealLane.Bot));
     }
 
-    private IEnumerator SpawnWave(GameObject prefab, MinionTeam team, Vector3[] path, string laneName)
+    private IEnumerator SpawnWave(GameObject prefab, MinionTeam team, Vector3[] path, string laneName, AOGSealLane lane)
     {
         SpawnMinion(prefab, team, path, MinionRole.Melee, -sideSpacing, 0f, laneName);
         yield return new WaitForSeconds(minionDelay * 0.35f);
@@ -98,19 +98,28 @@ public class MinionSpawner : MonoBehaviour
             yield return new WaitForSeconds(minionDelay);
             SpawnMinion(prefab, team, path, MinionRole.Cannon, 0f, backSpacing * 2f, laneName);
         }
+
+        MinionTeam enemySealOwner = team == MinionTeam.Blue ? MinionTeam.Red : MinionTeam.Blue;
+        if (AOGStrategicLaneSealSystemRuntime.IsSealDown(enemySealOwner, lane))
+        {
+            yield return new WaitForSeconds(minionDelay * 0.7f);
+            Minion elite = SpawnMinion(prefab, team, path, MinionRole.Cannon, sideSpacing * 0.55f, backSpacing * 2.7f, laneName + " Elite");
+            if (elite != null && elite.GetComponent<AOGEliteMinionRuntime>() == null)
+                elite.gameObject.AddComponent<AOGEliteMinionRuntime>();
+        }
     }
 
-    private void SpawnMinion(GameObject prefab, MinionTeam team, Vector3[] path, MinionRole role, float sideOffset, float backOffset, string laneName)
+    private Minion SpawnMinion(GameObject prefab, MinionTeam team, Vector3[] path, MinionRole role, float sideOffset, float backOffset, string laneName)
     {
         if (prefab == null || path == null || path.Length < 2)
-            return;
+            return null;
 
         Vector3 spawnPoint = path[0];
         Vector3 firstTarget = path[1];
         Vector3 forward = firstTarget - spawnPoint;
         forward.y = 0f;
         if (forward.sqrMagnitude <= 0.0001f)
-            return;
+            return null;
 
         forward.Normalize();
         Vector3 right = new Vector3(forward.z, 0f, -forward.x);
@@ -175,6 +184,7 @@ public class MinionSpawner : MonoBehaviour
         healthBar.barHeight = 0.105f;
 
         AOGMinionVisualFactory.Build(minion);
+        return minion;
     }
 
     private Vector3[] BuildBluePath(Transform[] laneWaypoints)

@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// One-time art-direction pass for the current three-lane map. It keeps gameplay geometry and route
-/// coordinates intact, while moving the presentation toward a cleaner stone-lane / dark-green jungle
-/// desktop MOBA look. Placeholder creature spheres are hidden when real runtime monsters/bosses exist.
+/// One-time art-direction and cleanup pass for the current three-lane map. Gameplay routes remain
+/// intact; the pass improves materials, removes obsolete procedural creature placeholders and reduces
+/// decorative physics cost.
 /// </summary>
 [DefaultExecutionOrder(16200)]
 public class AOGBenchmarkMapArtDirectionRuntime : MonoBehaviour
@@ -48,6 +48,7 @@ public class AOGBenchmarkMapArtDirectionRuntime : MonoBehaviour
         applied = true;
         BuildMaterials();
         RestyleMap(map.transform);
+        DisableDecorativeColliders(map.transform);
         HideProceduralCreaturePlaceholders(map.transform);
         ImproveWorldLighting();
     }
@@ -86,6 +87,26 @@ public class AOGBenchmarkMapArtDirectionRuntime : MonoBehaviour
             else if (n.Contains("trunk")) renderer.sharedMaterial = trunk;
             else if (n.Contains("blue") && (n.Contains("core") || n.Contains("crystal") || n.Contains("orb") || n.Contains("head"))) renderer.sharedMaterial = blueEnergy;
             else if (n.Contains("red") && (n.Contains("core") || n.Contains("crystal") || n.Contains("orb") || n.Contains("head"))) renderer.sharedMaterial = redEnergy;
+        }
+    }
+
+    private static void DisableDecorativeColliders(Transform map)
+    {
+        foreach (Collider collider in map.GetComponentsInChildren<Collider>(true))
+        {
+            if (collider == null) continue;
+            string n = collider.gameObject.name.ToLowerInvariant();
+
+            bool decorative = n.Contains("dark_tree_crown") ||
+                              n.Contains("small_gold_rune") ||
+                              n.Contains("broken_road_stone") ||
+                              n.Contains("camp_ruin_pillar") ||
+                              n.Contains("torch") ||
+                              n.Contains("rune") ||
+                              n.Contains("aura") ||
+                              n.Contains("trim_stone");
+
+            if (decorative) collider.enabled = false;
         }
     }
 

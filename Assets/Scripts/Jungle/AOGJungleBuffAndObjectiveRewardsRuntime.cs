@@ -143,7 +143,13 @@ public class AOGObjectiveRewardTrackerRuntime : MonoBehaviour
     {
         if (rewarded || boss == null || !boss.IsDead || !lastHittingTeam.HasValue) return;
         rewarded = true;
-        AOGTemporaryBuffType reward = boss.bossType == AOGNeutralBossType.Dragon ? AOGTemporaryBuffType.DragonResonance : AOGTemporaryBuffType.MedusaInsight;
+        AOGTemporaryBuffType reward;
+        if (GetComponent<AOGVoidTitanMarker>() != null)
+            reward = AOGTemporaryBuffType.TitanDominion;
+        else if (boss.bossType == AOGNeutralBossType.Dragon)
+            reward = AOGTemporaryBuffType.DragonResonance;
+        else
+            reward = AOGTemporaryBuffType.MedusaInsight;
         ApplyTeamReward(lastHittingTeam.Value,reward,120f);
     }
 

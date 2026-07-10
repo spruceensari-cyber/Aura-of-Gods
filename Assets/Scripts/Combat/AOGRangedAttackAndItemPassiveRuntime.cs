@@ -2,92 +2,18 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// Gives ranged champions visible projectile travel on confirmed basic-attack hits.
-/// Damage remains owned by AOGUnifiedMobaInputDriver; this component is presentation-only
-/// so it cannot double-apply combat damage.
+/// Legacy compatibility component. Authoritative ranged travel and impact are now owned by
+/// AOGChampionAttackProjectile through AOGUnifiedMobaInputDriver.
 /// </summary>
-public class AOGRangedAttackPresentationRuntime : MonoBehaviour, IChampionBasicAttackModifier
+public class AOGRangedAttackPresentationRuntime : MonoBehaviour
 {
-    private AOGCharacterStats stats;
-    private AOGActiveChampion champion;
-
-    private void Awake()
-    {
-        stats = GetComponent<AOGCharacterStats>();
-        champion = GetComponent<AOGActiveChampion>();
-    }
-
-    public void OnBasicAttackHit(Minion target)
-    {
-        if (target == null || stats == null || stats.attackRange < 4.2f)
-            return;
-
-        StartCoroutine(TravelVisual(target.transform));
-    }
-
-    private IEnumerator TravelVisual(Transform target)
-    {
-        if (target == null)
-            yield break;
-
-        GameObject projectile = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        projectile.name = (champion != null ? champion.displayName : "Champion") + "_Basic_Projectile_Visual";
-        projectile.transform.position = transform.position + Vector3.up * 1.35f + transform.forward * 0.55f;
-        projectile.transform.localScale = Vector3.one * 0.22f;
-
-        Collider collider = projectile.GetComponent<Collider>();
-        if (collider != null) Destroy(collider);
-
-        Renderer renderer = projectile.GetComponent<Renderer>();
-        Color accent = champion != null ? champion.accentColor : new Color(0.25f,0.72f,1f);
-        if (renderer != null)
-        {
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Standard");
-            Material material = new Material(shader) { color = accent };
-            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", accent);
-            if (material.HasProperty("_EmissionColor"))
-            {
-                material.EnableKeyword("_EMISSION");
-                material.SetColor("_EmissionColor", accent * 4f);
-            }
-            renderer.sharedMaterial = material;
-        }
-
-        LineRenderer trail = projectile.AddComponent<LineRenderer>();
-        trail.positionCount = 2;
-        trail.startWidth = 0.12f;
-        trail.endWidth = 0.025f;
-        trail.startColor = accent;
-        trail.endColor = new Color(accent.r,accent.g,accent.b,0f);
-        Shader trailShader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (trailShader == null) trailShader = Shader.Find("Unlit/Color");
-        trail.material = new Material(trailShader) { color = accent };
-
-        float speed = 24f;
-        float deadline = Time.time + 0.8f;
-        Vector3 previous = projectile.transform.position;
-        while (target != null && Time.time < deadline)
-        {
-            Vector3 destination = target.position + Vector3.up * 0.8f;
-            projectile.transform.position = Vector3.MoveTowards(projectile.transform.position, destination, speed * Time.deltaTime);
-            trail.SetPosition(0, previous);
-            trail.SetPosition(1, projectile.transform.position);
-            previous = projectile.transform.position;
-            if (Vector3.Distance(projectile.transform.position, destination) < 0.15f)
-                break;
-            yield return null;
-        }
-
-        Destroy(projectile);
-    }
 }
 
 /// <summary>
-/// Adds gameplay passives to the existing Aether Market items without changing purchase UI.
-/// Passives are resolved from inventory IDs, keeping the original shop data authoritative.
+/// Resolves Aether Market combat passives from unified combat events, allowing items to
+/// affect champion, minion, neutral and boss combat without duplicate target-specific code.
 /// </summary>
-public class AOGItemPassiveCombatRuntime : MonoBehaviour, IChampionBasicAttackModifier
+public class AOGItemPassiveCombatRuntime : MonoBehaviour
 {
     private AOGCharacterStats stats;
     private AOGPlayerEconomy economy;
@@ -102,6 +28,16 @@ public class AOGItemPassiveCombatRuntime : MonoBehaviour, IChampionBasicAttackMo
         champion = GetComponent<AOGActiveChampion>();
     }
 
+    private void OnEnable()
+    {
+        AOGCombatEvents.BasicAttackHit += OnBasicAttackHit;
+    }
+
+    private void OnDisable()
+    {
+        AOGCombatEvents.BasicAttackHit -= OnBasicAttackHit;
+    }
+
     private void Update()
     {
         if (stats == null || economy == null || champion == null || !champion.IsActiveChampion || stats.IsDead)
@@ -111,7 +47,7 @@ public class AOGItemPassiveCombatRuntime : MonoBehaviour, IChampionBasicAttackMo
         {
             nextTitanGuard = Time.time + 18f;
             stats.hp = Mathf.Min(stats.maxHp, stats.hp + stats.maxHp * 0.10f);
-            SpawnPassiveRing("Titan_Heart_Guard", 2.5f, new Color(0.96f,0.26f,0.32f));
+            SpawnPassiveRing("Titan_Heart_Guard",2.5f,new Color(0.96f,0.26f,0.32f));
         }
 
         if (Has("warstride") && Time.time >= nextWarstrideBurst)
@@ -121,58 +57,115 @@ public class AOGItemPassiveCombatRuntime : MonoBehaviour, IChampionBasicAttackMo
         }
     }
 
-    public void OnBasicAttackHit(Minion target)
+    private void OnBasicAttackHit(AOGCombatHitEvent hit)
     {
-        if (target == null || stats == null || economy == null)
+        if (stats == null || economy == null || champion == null || !champion.IsActiveChampion)
+            return;
+        if (!BelongsToThisChampion(hit.source) || hit.target == null)
             return;
 
         if (Has("moonblade"))
-            stats.hp = Mathf.Min(stats.maxHp, stats.hp + Mathf.Max(4f, stats.attackDamage * 0.055f));
+            stats.hp = Mathf.Min(stats.maxHp,stats.hp+Mathf.Max(4f,stats.attackDamage*0.055f));
 
         if (Has("starfang"))
-        {
-            float bonus = stats.attackDamage * 0.12f;
-            target.TakeDamage(bonus, gameObject);
-        }
+            DealBonusDamage(hit,stats.attackDamage*0.12f);
 
-        if (Has("voidglass") && target.hp / Mathf.Max(1f,target.maxHp) < 0.35f)
-            target.TakeDamage(stats.attackDamage * 0.20f, gameObject);
+        float healthRatio = TargetHealthRatio(hit);
+        if (Has("voidglass") && healthRatio >= 0f && healthRatio < 0.35f)
+            DealBonusDamage(hit,stats.attackDamage*0.20f);
 
         if (Has("eclipse"))
         {
-            stats.hp = Mathf.Min(stats.maxHp, stats.hp + 8f);
-            if (Random.value < 0.16f)
-                target.TakeDamage(stats.attackDamage * 0.26f, gameObject);
+            stats.hp=Mathf.Min(stats.maxHp,stats.hp+8f);
+            if (Random.value<0.16f)
+                DealBonusDamage(hit,stats.attackDamage*0.26f);
         }
 
-        if (Has("godbreaker") && target.hp / Mathf.Max(1f,target.maxHp) < 0.18f)
+        if (Has("godbreaker") && healthRatio >= 0f && healthRatio < 0.18f)
         {
-            target.TakeDamage(stats.attackDamage * 0.45f, gameObject);
-            SpawnPassiveRing("Godbreaker_Execute", 1.3f, new Color(1f,0.42f,0.12f));
+            DealBonusDamage(hit,stats.attackDamage*0.45f);
+            SpawnPassiveRing("Godbreaker_Execute",1.3f,new Color(1f,0.42f,0.12f));
         }
     }
 
     private IEnumerator WarstrideBurst()
     {
-        float bonus = 0.55f;
-        stats.moveSpeed += bonus;
-        SpawnPassiveRing("Warstride_Burst", 1.8f, new Color(0.42f,0.86f,0.48f));
+        float bonus=0.55f;
+        stats.moveSpeed+=bonus;
+        SpawnPassiveRing("Warstride_Burst",1.8f,new Color(0.42f,0.86f,0.48f));
         yield return new WaitForSeconds(2.5f);
-        if (stats != null)
-            stats.moveSpeed = Mathf.Max(1f, stats.moveSpeed - bonus);
+        if (stats!=null)
+            stats.moveSpeed=Mathf.Max(1f,stats.moveSpeed-bonus);
+    }
+
+    private bool BelongsToThisChampion(GameObject source)
+    {
+        if (source==null) return false;
+        if (source==gameObject || source.transform.IsChildOf(transform)) return true;
+        AOGCharacterStats parent=source.GetComponentInParent<AOGCharacterStats>();
+        return parent!=null && parent==stats;
+    }
+
+    private void DealBonusDamage(AOGCombatHitEvent hit,float amount)
+    {
+        if (hit.target==null || amount<=0f) return;
+        switch (hit.targetKind)
+        {
+            case AOGCombatTargetKind.Champion:
+                hit.target.GetComponentInParent<AOGCharacterStats>()?.TakeDamage(amount,gameObject);
+                break;
+            case AOGCombatTargetKind.Minion:
+            {
+                Minion minion=hit.target.GetComponentInParent<Minion>();
+                if (minion!=null) minion.TakeDamage(amount,gameObject);
+                break;
+            }
+            case AOGCombatTargetKind.NeutralMonster:
+                hit.target.GetComponentInParent<AOGNeutralMonsterRuntime>()?.TakeDamage(amount,gameObject);
+                break;
+            case AOGCombatTargetKind.Boss:
+                hit.target.GetComponentInParent<AOGNeutralBossAI>()?.TakeDamage(amount,gameObject);
+                break;
+        }
+    }
+
+    private static float TargetHealthRatio(AOGCombatHitEvent hit)
+    {
+        if (hit.target==null) return -1f;
+        if (hit.targetKind==AOGCombatTargetKind.Champion)
+        {
+            AOGCharacterStats hero=hit.target.GetComponentInParent<AOGCharacterStats>();
+            return hero!=null?hero.hp/Mathf.Max(1f,hero.maxHp):-1f;
+        }
+        if (hit.targetKind==AOGCombatTargetKind.Minion)
+        {
+            Minion minion=hit.target.GetComponentInParent<Minion>();
+            return minion!=null?minion.hp/Mathf.Max(1f,minion.maxHp):-1f;
+        }
+        if (hit.targetKind==AOGCombatTargetKind.NeutralMonster)
+        {
+            AOGNeutralMonsterRuntime monster=hit.target.GetComponentInParent<AOGNeutralMonsterRuntime>();
+            return monster!=null?monster.HpRatio:-1f;
+        }
+        if (hit.targetKind==AOGCombatTargetKind.Boss)
+        {
+            AOGNeutralBossAI boss=hit.target.GetComponentInParent<AOGNeutralBossAI>();
+            return boss!=null?boss.HpRatio:-1f;
+        }
+        return -1f;
     }
 
     private bool Has(string id)
     {
         foreach (AOGItemDefinition item in economy.inventory)
-            if (item != null && item.id == id) return true;
+            if (item!=null && item.id==id) return true;
         return false;
     }
 
-    private void SpawnPassiveRing(string name, float radius, Color color)
+    private void SpawnPassiveRing(string name,float radius,Color color)
     {
-        GameObject ring = AOGAbilityVisuals.CreateRing(name, transform.position + Vector3.up * 0.06f, radius, color, 0.08f);
-        Destroy(ring, 0.45f);
+        GameObject ring=AOGAbilityVisuals.CreateRing(name,transform.position+Vector3.up*0.06f,radius,color,0.08f);
+        Destroy(ring,0.45f);
     }
 }
 
@@ -181,21 +174,23 @@ public class AOGCombatEnhancementBootstrap : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
     {
-        if (FindFirstObjectByType<AOGCombatEnhancementBootstrap>() != null)
+        if (FindFirstObjectByType<AOGCombatEnhancementBootstrap>()!=null)
             return;
-        GameObject host = new GameObject("AOG_Combat_Enhancement_Bootstrap");
+        GameObject host=new GameObject("AOG_Combat_Enhancement_Bootstrap");
         DontDestroyOnLoad(host);
         host.AddComponent<AOGCombatEnhancementBootstrap>();
     }
 
+    private float nextScan;
     private void Update()
     {
-        foreach (AOGActiveChampion hero in FindObjectsByType<AOGActiveChampion>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        if (Time.unscaledTime<nextScan) return;
+        nextScan=Time.unscaledTime+0.75f;
+
+        foreach (AOGActiveChampion hero in FindObjectsByType<AOGActiveChampion>(FindObjectsInactive.Include,FindObjectsSortMode.None))
         {
-            if (hero == null) continue;
-            if (hero.GetComponent<AOGRangedAttackPresentationRuntime>() == null)
-                hero.gameObject.AddComponent<AOGRangedAttackPresentationRuntime>();
-            if (hero.GetComponent<AOGItemPassiveCombatRuntime>() == null)
+            if (hero==null) continue;
+            if (hero.GetComponent<AOGItemPassiveCombatRuntime>()==null)
                 hero.gameObject.AddComponent<AOGItemPassiveCombatRuntime>();
         }
     }

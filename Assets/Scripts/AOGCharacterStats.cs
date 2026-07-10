@@ -50,6 +50,9 @@ public class AOGCharacterStats : MonoBehaviour
         if (deathStarted || amount <= 0f)
             return;
 
+        if (source == null)
+            source = ResolveLikelyLegacyDamageSource();
+
         if (source != null)
         {
             lastDamageSource = source;
@@ -68,6 +71,26 @@ public class AOGCharacterStats : MonoBehaviour
         }
 
         Die(source);
+    }
+
+    private GameObject ResolveLikelyLegacyDamageSource()
+    {
+        AOGCharacterStats best = null;
+        float bestDistance = 9f;
+        foreach (AOGCharacterStats candidate in FindObjectsByType<AOGCharacterStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (candidate == null || candidate == this || candidate.IsDead || candidate.team == team)
+                continue;
+            Vector3 a = transform.position; a.y = 0f;
+            Vector3 b = candidate.transform.position; b.y = 0f;
+            float distance = Vector3.Distance(a,b);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+        return best != null ? best.gameObject : null;
     }
 
     private void Die(GameObject killer)

@@ -4,6 +4,7 @@ using UnityEngine;
 /// <summary>
 /// Distance-based presentation LOD for the clean competitive build. Simulation remains active;
 /// only minion renderers, particles and decorative lights are culled at conservative distances.
+/// Expensive scene discovery is cached and refreshed infrequently.
 /// </summary>
 [DefaultExecutionOrder(17200)]
 public class AOGCleanPresentationLodRuntime : MonoBehaviour
@@ -13,7 +14,10 @@ public class AOGCleanPresentationLodRuntime : MonoBehaviour
     public float decorativeLightDistance = 48f;
 
     private readonly Dictionary<Minion, Renderer[]> minionRenderers = new Dictionary<Minion, Renderer[]>();
+    private readonly List<ParticleSystem> particles = new List<ParticleSystem>();
+    private readonly List<Light> decorativeLights = new List<Light>();
     private float nextRefresh;
+    private float nextCacheRefresh;
     private Camera camera;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -27,6 +31,12 @@ public class AOGCleanPresentationLodRuntime : MonoBehaviour
 
     private void Update()
     {
+        if (Time.unscaledTime >= nextCacheRefresh)
+        {
+            nextCacheRefresh = Time.unscaledTime + 3f;
+            RefreshCaches();
+        }
+
         if (Time.unscaledTime < nextRefresh) return;
         nextRefresh = Time.unscaledTime + 0.35f;
         if (camera == null) camera = Camera.main;
@@ -36,6 +46,22 @@ public class AOGCleanPresentationLodRuntime : MonoBehaviour
         UpdateMinions(cameraPosition);
         UpdateParticles(cameraPosition);
         UpdateDecorativeLights(cameraPosition);
+    }
+
+    private void RefreshCaches()
+    {
+        particles.Clear();
+        particles.AddRange(FindObjectsByType<ParticleSystem>(FindObjectsInactive.Exclude,FindObjectsSortMode.None));
+
+        decorativeLights.Clear();
+        foreach (Light light in FindObjectsByType<Light>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        {
+            if (light == null || light.type == LightType.Directional) continue;
+            string lower = light.gameObject.name.ToLowerInvariant();
+            bool decorative = lower.Contains("rim") || lower.Contains("accent") || lower.Contains("aura") ||
+                              lower.Contains("vfx") || lower.Contains("identity") || lower.Contains("landmark");
+            if (decorative) decorativeLights.Add(light);
+        }
     }
 
     private void UpdateMinions(Vector3 cameraPosition)
@@ -76,9 +102,14 @@ public class AOGCleanPresentationLodRuntime : MonoBehaviour
     private void UpdateParticles(Vector3 cameraPosition)
     {
         float sqr = particleVisualDistance * particleVisualDistance;
-        foreach (ParticleSystem system in FindObjectsByType<ParticleSystem>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        for (int i=particles.Count-1;i>=0;i--)
         {
-            if (system == null) continue;
+            ParticleSystem system = particles[i];
+            if (system == null)
+            {
+                particles.RemoveAt(i);
+                continue;
+            }
             bool near = (system.transform.position - cameraPosition).sqrMagnitude <= sqr;
             ParticleSystem.EmissionModule emission = system.emission;
             emission.enabled = near;
@@ -88,13 +119,14 @@ public class AOGCleanPresentationLodRuntime : MonoBehaviour
     private void UpdateDecorativeLights(Vector3 cameraPosition)
     {
         float sqr = decorativeLightDistance * decorativeLightDistance;
-        foreach (Light light in FindObjectsByType<Light>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        for (int i=decorativeLights.Count-1;i>=0;i--)
         {
-            if (light == null || light.type == LightType.Directional) continue;
-            string lower = light.gameObject.name.ToLowerInvariant();
-            bool decorative = lower.Contains("rim") || lower.Contains("accent") || lower.Contains("aura") ||
-                              lower.Contains("vfx") || lower.Contains("identity") || lower.Contains("landmark");
-            if (!decorative) continue;
+            Light light = decorativeLights[i];
+            if (light == null)
+            {
+                decorativeLights.RemoveAt(i);
+                continue;
+            }
             light.enabled = (light.transform.position - cameraPosition).sqrMagnitude <= sqr;
         }
     }

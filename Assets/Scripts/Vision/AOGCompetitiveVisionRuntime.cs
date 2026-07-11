@@ -3,11 +3,6 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-/// <summary>
-/// Lightweight team vision source. Champions, allied structures, lane minions and wards contribute
-/// reveal radius to their owning team. The authority is information-only and never disables AI,
-/// damage, physics or movement authority.
-/// </summary>
 public class AOGVisionSourceRuntime : MonoBehaviour
 {
     public MinionTeam team = MinionTeam.Blue;
@@ -24,6 +19,8 @@ public static class AOGVisionAuthorityRuntime
 {
     private static readonly HashSet<AOGVisionSourceRuntime> sources = new HashSet<AOGVisionSourceRuntime>();
     private static readonly HashSet<AOGWardRuntime> wards = new HashSet<AOGWardRuntime>();
+    private static AOGActiveChampion cachedPlayer;
+    private static AOGCharacterStats cachedPlayerStats;
 
     public static IEnumerable<AOGVisionSourceRuntime> Sources => sources;
     public static IEnumerable<AOGWardRuntime> ActiveWards => wards;
@@ -48,20 +45,19 @@ public static class AOGVisionAuthorityRuntime
         if (ward != null) wards.Remove(ward);
     }
 
-    public static bool IsVisibleToTeam(Vector3 worldPoint, MinionTeam viewerTeam)
+    public static bool IsVisibleToTeam(Vector3 worldPoint,MinionTeam viewerTeam)
     {
         foreach (AOGVisionSourceRuntime source in sources)
         {
             if (source == null || !source.isActiveAndEnabled || source.team != viewerTeam) continue;
-            Vector3 delta = source.transform.position - worldPoint;
+            Vector3 delta = source.transform.position-worldPoint;
             delta.y = 0f;
-            if (delta.sqrMagnitude <= source.radius * source.radius)
-                return true;
+            if (delta.sqrMagnitude <= source.radius*source.radius) return true;
         }
         return false;
     }
 
-    public static bool IsVisibleToTeam(Component target, MinionTeam viewerTeam)
+    public static bool IsVisibleToTeam(Component target,MinionTeam viewerTeam)
     {
         if (target == null) return false;
 
@@ -81,7 +77,6 @@ public static class AOGVisionAuthorityRuntime
 
         TowerHealth tower = target.GetComponentInParent<TowerHealth>();
         if (tower != null && tower.towerTeam == viewerTeam) return true;
-
         return IsVisibleToTeam(target.transform.position,viewerTeam);
     }
 
@@ -90,20 +85,21 @@ public static class AOGVisionAuthorityRuntime
         get
         {
             AOGActiveChampion player = AOGPlayerChampionAuthority.CurrentChampion;
-            AOGCharacterStats stats = player != null ? player.GetComponent<AOGCharacterStats>() : null;
-            return stats != null ? stats.team : MinionTeam.Blue;
+            if (player != cachedPlayer)
+            {
+                cachedPlayer = player;
+                cachedPlayerStats = player != null ? player.GetComponent<AOGCharacterStats>() : null;
+            }
+            return cachedPlayerStats != null ? cachedPlayerStats.team : MinionTeam.Blue;
         }
     }
 }
 
-/// <summary>
-/// Local-player presentation gate for enemy champions. Hides enemy renderers and world health bars
-/// while out of team vision without disabling colliders, AI, movement or combat simulation.
-/// </summary>
 public class AOGFogTargetPresentationRuntime : MonoBehaviour
 {
     private AOGCharacterStats stats;
     private AOGWorldHealthBar worldBar;
+    private Renderer[] renderers;
     private bool lastVisible = true;
     private float nextRefresh;
 
@@ -111,14 +107,15 @@ public class AOGFogTargetPresentationRuntime : MonoBehaviour
     {
         stats = GetComponent<AOGCharacterStats>();
         worldBar = GetComponent<AOGWorldHealthBar>();
+        renderers = GetComponentsInChildren<Renderer>(true);
     }
 
     private void Update()
     {
         if (Time.unscaledTime < nextRefresh) return;
-        nextRefresh = Time.unscaledTime + 0.10f;
-
+        nextRefresh = Time.unscaledTime+0.16f;
         if (stats == null) return;
+
         MinionTeam viewer = AOGVisionAuthorityRuntime.PlayerTeam;
         bool visible = stats.team == viewer || AOGVisionAuthorityRuntime.IsVisibleToTeam(transform.position,viewer);
         if (visible == lastVisible) return;
@@ -128,7 +125,8 @@ public class AOGFogTargetPresentationRuntime : MonoBehaviour
 
     private void ApplyVisibility(bool visible)
     {
-        foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
+        if (renderers == null) renderers = GetComponentsInChildren<Renderer>(true);
+        foreach (Renderer renderer in renderers)
         {
             if (renderer == null) continue;
             string lower = renderer.gameObject.name.ToLowerInvariant();
@@ -145,14 +143,14 @@ public class AOGFogTargetPresentationRuntime : MonoBehaviour
     }
 }
 
-/// <summary>
-/// Timed team ward. Provides vision only and intentionally does not act as a combat unit.
-/// </summary>
 public class AOGWardRuntime : MonoBehaviour
 {
+    private static readonly Dictionary<MinionTeam,Material> materials = new Dictionary<MinionTeam,Material>();
+
     public MinionTeam team = MinionTeam.Blue;
     public float lifetime = 90f;
     public float visionRadius = 14f;
+
     private float expiresAt;
     private AOGVisionSourceRuntime source;
 
@@ -160,7 +158,7 @@ public class AOGWardRuntime : MonoBehaviour
 
     private void Awake()
     {
-        expiresAt = Time.time + lifetime;
+        expiresAt = Time.time+lifetime;
         source = GetComponent<AOGVisionSourceRuntime>();
         if (source == null) source = gameObject.AddComponent<AOGVisionSourceRuntime>();
         source.team = team;
@@ -185,20 +183,13 @@ public class AOGWardRuntime : MonoBehaviour
         if (Time.time >= expiresAt) Destroy(gameObject);
     }
 
-    public static AOGWardRuntime Spawn(Vector3 point, MinionTeam team)
+    public static AOGWardRuntime Spawn(Vector3 point,MinionTeam team)
     {
-        GameObject root = new GameObject(team + "_Aether_Ward");
-        root.transform.position = point + Vector3.up * 0.08f;
+        GameObject root = new GameObject(team+"_Aether_Ward");
+        root.transform.position = point+Vector3.up*0.08f;
 
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-        if (shader == null) shader = Shader.Find("Standard");
         Color accent = team == MinionTeam.Blue ? new Color(0.18f,0.66f,1f) : new Color(1f,0.24f,0.34f);
-        Material material = new Material(shader) { color = accent * 0.65f };
-        if (material.HasProperty("_EmissionColor"))
-        {
-            material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor",accent * 4f);
-        }
+        Material material = GetMaterial(team,accent);
 
         GameObject stem = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         stem.name = "Ward_Stem";
@@ -212,32 +203,49 @@ public class AOGWardRuntime : MonoBehaviour
         eye.name = "Ward_Eye";
         eye.transform.SetParent(root.transform,false);
         eye.transform.localPosition = new Vector3(0f,1.05f,0f);
-        eye.transform.localScale = Vector3.one * 0.32f;
+        eye.transform.localScale = Vector3.one*0.32f;
         eye.GetComponent<Renderer>().sharedMaterial = material;
         Destroy(eye.GetComponent<Collider>());
 
         Light light = eye.AddComponent<Light>();
         light.type = LightType.Point;
-        light.range = 4f;
-        light.intensity = 1.1f;
+        light.range = 3.6f;
+        light.intensity = 0.72f;
         light.color = accent;
+        light.shadows = LightShadows.None;
 
         AOGWardRuntime ward = root.AddComponent<AOGWardRuntime>();
         ward.team = team;
         ward.lifetime = 90f;
         ward.visionRadius = 14f;
-        AOGAbilityVisuals.CreateRing("Ward_Placed",point+Vector3.up*0.05f,2.1f,accent,0.08f);
+
+        GameObject ring = AOGAbilityVisuals.CreateRing("Ward_Placed",point+Vector3.up*0.05f,2.1f,accent,0.08f);
+        Destroy(ring,0.75f);
         return ward;
+    }
+
+    private static Material GetMaterial(MinionTeam team,Color accent)
+    {
+        if (materials.TryGetValue(team,out Material cached) && cached != null) return cached;
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) shader = Shader.Find("Standard");
+        Material material = new Material(shader) { name = team+"_Ward_Material", color = accent*0.65f, enableInstancing = true };
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor",accent*0.65f);
+        if (material.HasProperty("_EmissionColor"))
+        {
+            material.EnableKeyword("_EMISSION");
+            material.SetColor("_EmissionColor",accent*3.5f);
+        }
+        materials[team] = material;
+        return material;
     }
 }
 
-/// <summary>
-/// Human trinket input. Key 4 places a timed ward at the mouse ground point within placement range.
-/// </summary>
 public class AOGWardPlacementRuntime : MonoBehaviour
 {
     public float placementRange = 8f;
     public float cooldown = 105f;
+
     private AOGCharacterStats stats;
     private AOGActiveChampion active;
     private float nextReady;
@@ -272,43 +280,54 @@ public class AOGWardPlacementRuntime : MonoBehaviour
         Vector3 flat = point-transform.position;
         flat.y = 0f;
         if (flat.magnitude > placementRange)
-            point = transform.position + flat.normalized * placementRange;
+            point = transform.position+flat.normalized*placementRange;
         point.y = transform.position.y;
 
         AOGWardRuntime.Spawn(point,stats.team);
-        nextReady = Time.time + cooldown;
+        nextReady = Time.time+cooldown;
         AOGScoreboardAndAnnouncerRuntime.Instance?.ShowExternalMessage("AETHER WARD DEPLOYED",new Color(0.40f,0.82f,1f),1.2f);
     }
 }
 
 /// <summary>
-/// Minimap fog texture driven by the same team vision authority. It darkens unknown map cells while
-/// leaving visible cells readable. Markers remain separate UI children and can be filtered independently.
+/// Low-allocation minimap fog. Instead of testing every pixel against every source, each active
+/// source rasterizes only its small local circle into a persistent Color32 buffer.
 /// </summary>
 public class AOGMinimapFogOverlayRuntime : MonoBehaviour
 {
-    private const int TextureSize = 64;
+    private const int TextureSize = 48;
     private const float HalfWidth = 170f;
     private const float HalfDepth = 156f;
+
+    private static readonly Color32 VisibleColor = new Color32(3,5,10,20);
+    private static readonly Color32 HiddenColor = new Color32(1,2,5,198);
+
     private Texture2D texture;
-    private RawImage image;
+    private Color32[] pixels;
     private RectTransform minimap;
     private float nextUpdate;
+    private float nextHudSearch;
 
     private void Update()
     {
         if (minimap == null)
         {
+            if (Time.unscaledTime < nextHudSearch) return;
+            nextHudSearch = Time.unscaledTime+0.5f;
             AOGCompetitiveMobaHUDRuntime hud = FindFirstObjectByType<AOGCompetitiveMobaHUDRuntime>();
             if (hud == null) return;
             foreach (RectTransform rect in hud.GetComponentsInChildren<RectTransform>(true))
-                if (rect.name == "Minimap") { minimap = rect; break; }
+            {
+                if (rect.name != "Minimap") continue;
+                minimap = rect;
+                break;
+            }
             if (minimap == null) return;
             BuildOverlay();
         }
 
         if (Time.unscaledTime < nextUpdate) return;
-        nextUpdate = Time.unscaledTime + 0.25f;
+        nextUpdate = Time.unscaledTime+0.40f;
         RefreshTexture();
     }
 
@@ -326,32 +345,54 @@ public class AOGMinimapFogOverlayRuntime : MonoBehaviour
         texture = new Texture2D(TextureSize,TextureSize,TextureFormat.RGBA32,false);
         texture.wrapMode = TextureWrapMode.Clamp;
         texture.filterMode = FilterMode.Bilinear;
-        image = go.GetComponent<RawImage>();
+        pixels = new Color32[TextureSize*TextureSize];
+
+        RawImage image = go.GetComponent<RawImage>();
         image.texture = texture;
         image.raycastTarget = false;
     }
 
     private void RefreshTexture()
     {
-        if (texture == null) return;
-        MinionTeam team = AOGVisionAuthorityRuntime.PlayerTeam;
-        Color visible = new Color(0.01f,0.02f,0.04f,0.08f);
-        Color hidden = new Color(0.005f,0.01f,0.02f,0.78f);
-        Color[] pixels = new Color[TextureSize*TextureSize];
+        if (texture == null || pixels == null) return;
+        for (int i=0;i<pixels.Length;i++) pixels[i] = HiddenColor;
 
-        for (int y=0;y<TextureSize;y++)
+        MinionTeam team = AOGVisionAuthorityRuntime.PlayerTeam;
+        foreach (AOGVisionSourceRuntime source in AOGVisionAuthorityRuntime.Sources)
         {
-            float nz = y/(TextureSize-1f)*2f-1f;
-            for (int x=0;x<TextureSize;x++)
-            {
-                float nx = x/(TextureSize-1f)*2f-1f;
-                Vector3 point = new Vector3(nx*HalfWidth,0f,nz*HalfDepth);
-                pixels[y*TextureSize+x] = AOGVisionAuthorityRuntime.IsVisibleToTeam(point,team) ? visible : hidden;
-            }
+            if (source == null || !source.isActiveAndEnabled || source.team != team) continue;
+            RasterizeSource(source.transform.position,source.radius);
         }
 
-        texture.SetPixels(pixels);
+        texture.SetPixels32(pixels);
         texture.Apply(false,false);
+    }
+
+    private void RasterizeSource(Vector3 worldPosition,float radius)
+    {
+        int centerX = Mathf.RoundToInt(Mathf.InverseLerp(-HalfWidth,HalfWidth,worldPosition.x)*(TextureSize-1));
+        int centerY = Mathf.RoundToInt(Mathf.InverseLerp(-HalfDepth,HalfDepth,worldPosition.z)*(TextureSize-1));
+        int radiusX = Mathf.Max(1,Mathf.CeilToInt(radius/(HalfWidth*2f)*(TextureSize-1))+1);
+        int radiusY = Mathf.Max(1,Mathf.CeilToInt(radius/(HalfDepth*2f)*(TextureSize-1))+1);
+
+        int minX = Mathf.Max(0,centerX-radiusX);
+        int maxX = Mathf.Min(TextureSize-1,centerX+radiusX);
+        int minY = Mathf.Max(0,centerY-radiusY);
+        int maxY = Mathf.Min(TextureSize-1,centerY+radiusY);
+        float radiusSqr = radius*radius;
+
+        for (int y=minY;y<=maxY;y++)
+        {
+            float wz = Mathf.Lerp(-HalfDepth,HalfDepth,y/(TextureSize-1f));
+            float dz = wz-worldPosition.z;
+            for (int x=minX;x<=maxX;x++)
+            {
+                float wx = Mathf.Lerp(-HalfWidth,HalfWidth,x/(TextureSize-1f));
+                float dx = wx-worldPosition.x;
+                if (dx*dx+dz*dz <= radiusSqr)
+                    pixels[y*TextureSize+x] = VisibleColor;
+            }
+        }
     }
 }
 
@@ -373,7 +414,7 @@ public class AOGCompetitiveVisionBootstrap : MonoBehaviour
     private void Update()
     {
         if (Time.unscaledTime < nextAttach) return;
-        nextAttach = Time.unscaledTime + 1.5f;
+        nextAttach = Time.unscaledTime+1.5f;
 
         foreach (AOGTeamMemberIdentity member in AOGWorldRegistry.TeamMembers)
         {
@@ -391,7 +432,7 @@ public class AOGCompetitiveVisionBootstrap : MonoBehaviour
         foreach (AOGStrategicLaneSeal seal in AOGWorldRegistry.Seals)
             if (seal != null) EnsureSource(seal.gameObject,seal.team,12f);
 
-        foreach (Minion minion in FindObjectsByType<Minion>(FindObjectsInactive.Exclude,FindObjectsSortMode.None))
+        foreach (Minion minion in Minion.Active)
             if (minion != null && minion.hp > 0f) EnsureSource(minion.gameObject,minion.team,8.5f);
     }
 

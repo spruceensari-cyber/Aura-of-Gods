@@ -58,10 +58,13 @@ public class Minion : MonoBehaviour
     private Coroutine attackRoutine;
     private bool dying;
     private Vector3 lastPosition;
+    private readonly List<Minion> nearbyBuffer = new List<Minion>(24);
 
     private void OnEnable()
     {
         Active.Add(this);
+        float stagger = Mathf.Abs(GetInstanceID() % 11) * 0.013f;
+        nextTargetScan = Time.time + stagger;
     }
 
     private void OnDisable()
@@ -275,9 +278,11 @@ public class Minion : MonoBehaviour
     {
         Vector3 force = Vector3.zero;
         int count = 0;
+        AOGMinionSpatialGridRuntime.Query(transform.position, 1.5f, nearbyBuffer);
 
-        foreach (Minion other in Active)
+        for (int i = 0; i < nearbyBuffer.Count; i++)
         {
+            Minion other = nearbyBuffer[i];
             if (other == null || other == this || other.team != team || other.hp <= 0f)
                 continue;
 
@@ -301,14 +306,16 @@ public class Minion : MonoBehaviour
     {
         Minion closest = null;
         float closestDistance = Mathf.Infinity;
+        AOGMinionSpatialGridRuntime.Query(transform.position, aggroRange, nearbyBuffer);
 
-        foreach (Minion minion in Active)
+        for (int i = 0; i < nearbyBuffer.Count; i++)
         {
+            Minion minion = nearbyBuffer[i];
             if (!IsValidEnemy(minion))
                 continue;
 
             float distance = FlatDistance(transform.position, minion.transform.position);
-            if (distance <= aggroRange && distance < closestDistance)
+            if (distance < closestDistance)
             {
                 closest = minion;
                 closestDistance = distance;
@@ -320,11 +327,10 @@ public class Minion : MonoBehaviour
 
     private TowerHealth FindEnemyTowerInRange()
     {
-        TowerHealth[] towers = FindObjectsByType<TowerHealth>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         TowerHealth closest = null;
         float closestDistance = Mathf.Infinity;
 
-        foreach (TowerHealth tower in towers)
+        foreach (TowerHealth tower in AOGWorldRegistry.Towers)
         {
             if (tower == null || !tower.gameObject.activeInHierarchy || tower.hp <= 0f || tower.towerTeam == team)
                 continue;
@@ -386,7 +392,8 @@ public class Minion : MonoBehaviour
                     if (minion != null) minion.TakeDamage(damage, gameObject);
                     else if (tower != null) tower.TakeDamage(damage);
                     else if (nexus != null) nexus.TakeDamage(damage);
-                    AOGAbilityVisuals.CreateRing("Minion_Melee_Impact", targetTransform.position + Vector3.up * 0.08f, 0.48f, TeamColor(), 0.045f);
+                    GameObject impact = AOGAbilityVisuals.CreateRing("Minion_Melee_Impact", targetTransform.position + Vector3.up * 0.08f, 0.48f, TeamColor(), 0.045f);
+                    Destroy(impact,0.25f);
                 }
                 else
                 {
@@ -630,7 +637,8 @@ public class AOGMinionProjectile : MonoBehaviour
         else if (nexusTarget != null && !nexusTarget.IsDestroyed)
             nexusTarget.TakeDamage(damage);
 
-        AOGAbilityVisuals.CreateRing("Minion_Projectile_Impact", point, cannon ? 0.9f : 0.48f, color, cannon ? 0.10f : 0.055f);
+        GameObject ring = AOGAbilityVisuals.CreateRing("Minion_Projectile_Impact", point, cannon ? 0.9f : 0.48f, color, cannon ? 0.10f : 0.055f);
+        Destroy(ring,0.35f);
         Destroy(gameObject);
     }
 }

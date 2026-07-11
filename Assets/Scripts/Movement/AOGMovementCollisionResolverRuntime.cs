@@ -1,10 +1,5 @@
 using UnityEngine;
 
-/// <summary>
-/// Shared movement safety helper for transform-driven MOBA actors. Performs capsule sweeps against
-/// world/structure blockers, slides along surfaces and applies small depenetration corrections.
-/// Other combat units are intentionally ignored as hard blockers so lane crowds do not deadlock.
-/// </summary>
 public static class AOGMovementCollisionResolver
 {
     private static readonly RaycastHit[] sweepHits = new RaycastHit[24];
@@ -13,7 +8,6 @@ public static class AOGMovementCollisionResolver
     public static Vector3 ResolveStep(Transform actor, Vector3 startPosition, Vector3 desiredDelta, float radius, float height)
     {
         if (actor == null || desiredDelta.sqrMagnitude <= 0.0000001f) return Vector3.zero;
-
         desiredDelta.y = 0f;
         float distance = desiredDelta.magnitude;
         if (distance <= 0.0001f) return Vector3.zero;
@@ -21,7 +15,6 @@ public static class AOGMovementCollisionResolver
         Vector3 direction = desiredDelta / distance;
         Capsule(startPosition,radius,height,out Vector3 bottom,out Vector3 top);
         int count = Physics.CapsuleCastNonAlloc(bottom,top,radius,direction,sweepHits,distance+0.08f,~0,QueryTriggerInteraction.Ignore);
-
         RaycastHit nearest = default;
         bool blocked = false;
         float nearestDistance = float.PositiveInfinity;
@@ -36,7 +29,6 @@ public static class AOGMovementCollisionResolver
                 blocked = true;
             }
         }
-
         if (!blocked) return desiredDelta;
 
         float travel = Mathf.Clamp(nearestDistance-0.04f,0f,distance);
@@ -67,7 +59,6 @@ public static class AOGMovementCollisionResolver
         int count = Physics.OverlapCapsuleNonAlloc(bottom,top,radius,overlapHits,~0,QueryTriggerInteraction.Ignore);
         Vector3 correction = Vector3.zero;
         int blockers = 0;
-
         CapsuleCollider probe = actor.GetComponent<CapsuleCollider>();
         if (probe == null) return Vector3.zero;
 
@@ -85,7 +76,6 @@ public static class AOGMovementCollisionResolver
                 }
             }
         }
-
         if (blockers > 1) correction /= blockers;
         return Vector3.ClampMagnitude(correction,maxCorrection);
     }
@@ -95,16 +85,13 @@ public static class AOGMovementCollisionResolver
         if (collider == null || collider.isTrigger) return false;
         Transform t = collider.transform;
         if (t == actor || t.IsChildOf(actor) || actor.IsChildOf(t)) return false;
-
         if (collider.GetComponentInParent<AOGCharacterStats>() != null) return false;
         if (collider.GetComponentInParent<Minion>() != null) return false;
         if (collider.GetComponentInParent<AOGNeutralMonsterRuntime>() != null) return false;
         if (collider.GetComponentInParent<AOGNeutralBossAI>() != null) return false;
-
         string n = collider.gameObject.name.ToLowerInvariant();
         if (n.Contains("ground") || n.Contains("floor") || n.Contains("lane") || n.Contains("river") || n.Contains("road")) return false;
         if (n.Contains("telegraph") || n.Contains("ring") || n.Contains("aura") || n.Contains("click") || n.Contains("healthbar") || n.Contains("hp_bar")) return false;
-
         return true;
     }
 
@@ -118,33 +105,19 @@ public static class AOGMovementCollisionResolver
     }
 }
 
-/// <summary>
-/// Late-frame guard for every transform-driven movement authority. It records the frame start,
-/// inspects the final attempted displacement and rewrites that displacement through the resolver.
-/// </summary>
 [DefaultExecutionOrder(9000)]
 public class AOGMovementFrameGuardRuntime : MonoBehaviour
 {
     public float radius = 0.58f;
     public float height = 2.2f;
     public float maxFrameDistance = 1.25f;
-
     private Vector3 frameStart;
     private bool initialized;
 
-    private void OnEnable()
-    {
-        frameStart = transform.position;
-        initialized = true;
-    }
-
+    private void OnEnable() { frameStart = transform.position; initialized = true; }
     private void Update()
     {
-        if (!initialized)
-        {
-            frameStart = transform.position;
-            initialized = true;
-        }
+        if (!initialized) { frameStart = transform.position; initialized = true; }
     }
 
     private void LateUpdate()
@@ -152,12 +125,7 @@ public class AOGMovementFrameGuardRuntime : MonoBehaviour
         Vector3 attempted = transform.position-frameStart;
         float vertical = attempted.y;
         attempted.y = 0f;
-
-        if (attempted.magnitude > maxFrameDistance)
-        {
-            frameStart = transform.position;
-            return;
-        }
+        if (attempted.magnitude > maxFrameDistance) { frameStart = transform.position; return; }
 
         if (attempted.sqrMagnitude > 0.0000001f)
         {
@@ -168,47 +136,33 @@ public class AOGMovementFrameGuardRuntime : MonoBehaviour
         }
 
         Vector3 correction = AOGMovementCollisionResolver.ComputeDepenetration(transform,radius,height,0.10f);
-        if (correction.sqrMagnitude > 0.0001f)
-            transform.position += correction;
-
+        if (correction.sqrMagnitude > 0.0001f) transform.position += correction;
         frameStart = transform.position;
     }
 }
 
-/// <summary>
-/// Low-frequency stuck detector. It never owns path choice; it applies a small depenetration nudge
-/// and a deterministic lateral escape offset when the actor remains nearly stationary too long.
-/// </summary>
 public class AOGMovementStuckRecoveryRuntime : MonoBehaviour
 {
     public float radius = 0.58f;
     public float height = 2.2f;
-    public float sampleInterval = 0.35f;
+    public float sampleInterval = 0.55f;
     public float stuckDistance = 0.055f;
-    public int samplesBeforeRecovery = 4;
-
+    public int samplesBeforeRecovery = 5;
     private Vector3 lastPosition;
     private float nextSample;
     private int stuckSamples;
     private int escapeSign = 1;
 
-    private void OnEnable()
-    {
-        lastPosition = transform.position;
-        stuckSamples = 0;
-    }
+    private void OnEnable() { lastPosition = transform.position; stuckSamples = 0; }
 
     private void Update()
     {
         if (Time.unscaledTime < nextSample) return;
         nextSample = Time.unscaledTime+sampleInterval;
-
         Vector3 delta = transform.position-lastPosition;
         delta.y = 0f;
-        if (delta.magnitude <= stuckDistance) stuckSamples++;
-        else stuckSamples = 0;
+        if (delta.magnitude <= stuckDistance) stuckSamples++; else stuckSamples = 0;
         lastPosition = transform.position;
-
         if (stuckSamples < samplesBeforeRecovery) return;
 
         Vector3 correction = AOGMovementCollisionResolver.ComputeDepenetration(transform,radius,height,0.28f);
@@ -218,9 +172,7 @@ public class AOGMovementStuckRecoveryRuntime : MonoBehaviour
             correction = AOGMovementCollisionResolver.ResolveStep(transform,transform.position,lateral,radius,height);
             escapeSign *= -1;
         }
-
-        if (correction.sqrMagnitude > 0.0001f)
-            transform.position += correction;
+        if (correction.sqrMagnitude > 0.0001f) transform.position += correction;
         stuckSamples = 0;
     }
 }
@@ -242,16 +194,16 @@ public class AOGMovementReliabilityBootstrap : MonoBehaviour
     private void Update()
     {
         if (Time.unscaledTime < nextAttach) return;
-        nextAttach = Time.unscaledTime+1.0f;
+        nextAttach = Time.unscaledTime+1.25f;
 
         foreach (AOGCharacterStats hero in AOGWorldRegistry.Characters)
-            Attach(hero != null ? hero.gameObject : null);
+            AttachHero(hero != null ? hero.gameObject : null);
 
         foreach (Minion minion in Minion.Active)
-            Attach(minion != null ? minion.gameObject : null);
+            AttachMinionLightweight(minion != null ? minion.gameObject : null);
     }
 
-    private static void Attach(GameObject target)
+    private static void AttachHero(GameObject target)
     {
         if (target == null) return;
         CapsuleCollider capsule = target.GetComponent<CapsuleCollider>();
@@ -267,5 +219,23 @@ public class AOGMovementReliabilityBootstrap : MonoBehaviour
         if (recovery == null) recovery = target.AddComponent<AOGMovementStuckRecoveryRuntime>();
         recovery.radius = radius;
         recovery.height = height;
+    }
+
+    private static void AttachMinionLightweight(GameObject target)
+    {
+        if (target == null) return;
+        AOGMovementFrameGuardRuntime expensiveGuard = target.GetComponent<AOGMovementFrameGuardRuntime>();
+        if (expensiveGuard != null) Destroy(expensiveGuard);
+
+        CapsuleCollider capsule = target.GetComponent<CapsuleCollider>();
+        float radius = capsule != null ? capsule.radius : 0.42f;
+        float height = capsule != null ? capsule.height : 1.6f;
+
+        AOGMovementStuckRecoveryRuntime recovery = target.GetComponent<AOGMovementStuckRecoveryRuntime>();
+        if (recovery == null) recovery = target.AddComponent<AOGMovementStuckRecoveryRuntime>();
+        recovery.radius = radius;
+        recovery.height = height;
+        recovery.sampleInterval = 0.85f;
+        recovery.samplesBeforeRecovery = 7;
     }
 }

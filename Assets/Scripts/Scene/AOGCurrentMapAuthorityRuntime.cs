@@ -7,6 +7,7 @@ public class AOGCurrentMapAuthorityRuntime : MonoBehaviour
 {
     private static readonly string[] PreferredMapNames =
     {
+        "AOG_Clean_Competitive_Map",
         "AOG_Symmetric_Reference_Map",
         "AOGSymmetricReferenceMap",
         "Map",
@@ -53,7 +54,6 @@ public class AOGCurrentMapAuthorityRuntime : MonoBehaviour
 
     private IEnumerator ResolveAfterSceneReady()
     {
-        // Runtime-generated map objects may appear over several frames.
         yield return null;
         yield return new WaitForSecondsRealtime(0.20f);
         RestorePlayableWorld();
@@ -71,18 +71,27 @@ public class AOGCurrentMapAuthorityRuntime : MonoBehaviour
             authoritativeMap.gameObject.SetActive(true);
             SetParentsActive(authoritativeMap);
 
-            // Only disable explicitly named legacy roots and only when a valid authoritative map exists.
             foreach (string legacyName in ExplicitLegacyMapRoots)
             {
                 Transform legacy = FindTransformByExactName(legacyName);
                 if (legacy != null && legacy != authoritativeMap && !authoritativeMap.IsChildOf(legacy))
                     legacy.gameObject.SetActive(false);
             }
+
+            if (authoritativeMap.name == "AOG_Clean_Competitive_Map")
+            {
+                Transform old = FindTransformByExactName("AOG_Symmetric_Reference_Map");
+                if (old != null && old != authoritativeMap)
+                {
+                    foreach (Renderer renderer in old.GetComponentsInChildren<Renderer>(true))
+                        if (renderer != null) renderer.enabled = false;
+                    foreach (Collider collider in old.GetComponentsInChildren<Collider>(true))
+                        if (collider != null) collider.enabled = false;
+                }
+            }
         }
         else
         {
-            // Safety fallback: never leave the game with an invisible world.
-            // Re-enable likely scene map/terrain roots rather than guessing and disabling them.
             foreach (GameObject root in SceneManager.GetActiveScene().GetRootGameObjects())
             {
                 if (root == null)
@@ -127,6 +136,7 @@ public class AOGCurrentMapAuthorityRuntime : MonoBehaviour
     {
         int score = 0;
         string rootName = root.name.ToLowerInvariant();
+        if (rootName.Contains("clean_competitive")) score += 20;
         if (rootName.Contains("map")) score += 2;
         if (rootName.Contains("terrain")) score += 2;
         if (FindChildContains(root, "lane")) score += 2;

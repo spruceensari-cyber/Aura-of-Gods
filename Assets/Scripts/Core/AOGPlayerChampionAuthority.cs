@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public enum AOGRole
@@ -67,6 +68,7 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
             return;
 
         currentRole = role;
+        List<GameObject> discard = new List<GameObject>();
 
         AOGActiveChampion[] candidates = FindObjectsByType<AOGActiveChampion>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (AOGActiveChampion candidate in candidates)
@@ -89,7 +91,13 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
                 legacy.enabled = false;
 
             if (!isSelected)
-                candidate.gameObject.SetActive(false);
+            {
+                AOGTeamMemberIdentity existingRosterIdentity = candidate.GetComponent<AOGTeamMemberIdentity>();
+                if (existingRosterIdentity == null)
+                    discard.Add(candidate.gameObject);
+                else
+                    candidate.gameObject.SetActive(false);
+            }
         }
 
         selected.gameObject.SetActive(true);
@@ -105,6 +113,13 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
         currentChampion = selected;
 
         EnsureSinglePlayerCombatDriver(selected);
+
+        foreach (GameObject candidate in discard)
+        {
+            if (candidate == null || candidate == selected.gameObject) continue;
+            candidate.SetActive(false);
+            Destroy(candidate);
+        }
 
         Camera camera = Camera.main;
         if (camera != null)

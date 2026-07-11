@@ -19,6 +19,9 @@ public class AOGCombatFeedbackRuntime : MonoBehaviour
     private Font font;
     private float nextScan;
     private readonly List<TrackedHealth> tracked = new List<TrackedHealth>();
+    private readonly Queue<AOGFloatingCombatText> textPool = new Queue<AOGFloatingCombatText>();
+    private const int WarmCount = 24;
+    private const int MaxPoolCount = 64;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
@@ -43,6 +46,13 @@ public class AOGCombatFeedbackRuntime : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.matchWidthOrHeight = 0.5f;
         canvasRect = go.GetComponent<RectTransform>();
+
+        for (int i=0;i<WarmCount;i++)
+        {
+            AOGFloatingCombatText item = CreateTextObject();
+            item.gameObject.SetActive(false);
+            textPool.Enqueue(item);
+        }
     }
 
     private void OnEnable()
@@ -59,7 +69,7 @@ public class AOGCombatFeedbackRuntime : MonoBehaviour
     {
         if (Time.unscaledTime >= nextScan)
         {
-            nextScan = Time.unscaledTime + 0.5f;
+            nextScan = Time.unscaledTime + 0.65f;
             ScanStructuresAndBosses();
         }
 
@@ -131,26 +141,50 @@ public class AOGCombatFeedbackRuntime : MonoBehaviour
         if (screen.z <= 0f) return;
 
         RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, new Vector2(screen.x, screen.y), null, out Vector2 local);
-        GameObject go = new GameObject("Damage_" + damage, typeof(RectTransform), typeof(Text), typeof(CanvasGroup));
-        go.transform.SetParent(canvas.transform, false);
-        RectTransform rect = go.GetComponent<RectTransform>();
-        rect.anchoredPosition = local + new Vector2(Random.Range(-16f, 16f), Random.Range(-4f, 16f));
-        rect.sizeDelta = new Vector2(180f, 54f);
+        AOGFloatingCombatText item = textPool.Count > 0 ? textPool.Dequeue() : CreateTextObject();
+        item.transform.SetParent(canvas.transform,false);
+        item.gameObject.SetActive(true);
 
+        RectTransform rect = item.Rect;
+        rect.anchoredPosition = local + new Vector2(UnityEngine.Random.Range(-16f, 16f), UnityEngine.Random.Range(-4f, 16f));
+        rect.sizeDelta = new Vector2(180f,54f);
+
+        Text text = item.Label;
+        text.fontSize = damage >= 250 ? 30 : 23;
+        text.color = ResolveDamageColor(damageType,damage);
+        text.text = "-" + damage + DamageSuffix(damageType);
+        item.Play(this,0.75f);
+    }
+
+    private AOGFloatingCombatText CreateTextObject()
+    {
+        GameObject go = new GameObject("Pooled_Damage_Text", typeof(RectTransform), typeof(Text), typeof(CanvasGroup), typeof(Outline));
+        go.transform.SetParent(canvas.transform,false);
         Text text = go.GetComponent<Text>();
         text.font = font;
-        text.fontSize = damage >= 250 ? 30 : 23;
+        text.fontSize = 23;
         text.fontStyle = FontStyle.Bold;
         text.alignment = TextAnchor.MiddleCenter;
-        text.color = ResolveDamageColor(damageType, damage);
-        text.text = "-" + damage + DamageSuffix(damageType);
         text.raycastTarget = false;
 
-        Outline outline = go.AddComponent<Outline>();
-        outline.effectColor = new Color(0f, 0f, 0f, 0.72f);
-        outline.effectDistance = new Vector2(1f, -1f);
+        Outline outline = go.GetComponent<Outline>();
+        outline.effectColor = new Color(0f,0f,0f,0.72f);
+        outline.effectDistance = new Vector2(1f,-1f);
 
-        go.AddComponent<AOGFloatingCombatText>();
+        AOGFloatingCombatText item = go.AddComponent<AOGFloatingCombatText>();
+        item.Initialize();
+        return item;
+    }
+
+    internal void Return(AOGFloatingCombatText item)
+    {
+        if (item == null) return;
+        item.gameObject.SetActive(false);
+        item.transform.SetParent(canvas.transform,false);
+        if (textPool.Count < MaxPoolCount)
+            textPool.Enqueue(item);
+        else
+            Destroy(item.gameObject);
     }
 
     private static Color ResolveDamageColor(AOGDamageType? type, int damage)
@@ -188,20 +222,42 @@ public class AOGFloatingCombatText : MonoBehaviour
 {
     private RectTransform rect;
     private CanvasGroup group;
+    private Text label;
+    private AOGCombatFeedbackRuntime owner;
     private float life = 0.75f;
     private float elapsed;
+    private bool playing;
 
-    private void Awake()
+    public RectTransform Rect => rect;
+    public Text Label => label;
+
+    public void Initialize()
     {
         rect = GetComponent<RectTransform>();
         group = GetComponent<CanvasGroup>();
+        label = GetComponent<Text>();
+    }
+
+    public void Play(AOGCombatFeedbackRuntime poolOwner,float duration)
+    {
+        if (rect == null || group == null || label == null) Initialize();
+        owner = poolOwner;
+        life = Mathf.Max(0.1f,duration);
+        elapsed = 0f;
+        group.alpha = 1f;
+        playing = true;
     }
 
     private void Update()
     {
+        if (!playing) return;
         elapsed += Time.unscaledDeltaTime;
         rect.anchoredPosition += Vector2.up * 52f * Time.unscaledDeltaTime;
         group.alpha = 1f - Mathf.Clamp01(elapsed / life);
-        if (elapsed >= life) Destroy(gameObject);
+        if (elapsed >= life)
+        {
+            playing = false;
+            owner?.Return(this);
+        }
     }
 }

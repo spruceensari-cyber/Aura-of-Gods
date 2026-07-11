@@ -78,7 +78,7 @@ public class AOGOriginalBossPresentationRuntime : MonoBehaviour
             Part(root,PrimitiveType.Cube,"Clean_Dragon_Wing_"+side,new Vector3(side*3.3f,4.2f,0.4f),new Vector3(4.8f,0.22f,2.3f),armor,Quaternion.Euler(18f,side*18f,side*-22f));
             Part(root,PrimitiveType.Capsule,"Clean_Dragon_Leg_F_"+side,new Vector3(side*1.7f,1.2f,2.2f),new Vector3(0.65f,1.5f,0.65f),scale,Quaternion.identity);
             Part(root,PrimitiveType.Capsule,"Clean_Dragon_Leg_B_"+side,new Vector3(side*1.8f,1.2f,-1.7f),new Vector3(0.72f,1.6f,0.72f),scale,Quaternion.identity);
-            Part(root,PrimitiveType.Cone,"Clean_Dragon_Horn_"+side,new Vector3(side*0.75f,5.9f,4.3f),new Vector3(0.35f,1.2f,0.35f),fire,Quaternion.Euler(-22f,0f,side*14f));
+            Part(root,PrimitiveType.Cylinder,"Clean_Dragon_Horn_"+side,new Vector3(side*0.75f,5.9f,4.3f),new Vector3(0.30f,1.15f,0.30f),fire,Quaternion.Euler(-22f,0f,side*14f));
         }
 
         for(int i=0;i<5;i++)
@@ -118,15 +118,9 @@ public class AOGOriginalBossPresentationRuntime : MonoBehaviour
         }
     }
 
-    private GameObject Part(Transform parent,PrimitiveType type,string name,Vector3 pos,Vector3 scale,Material material,Quaternion rotation)
+    private static GameObject Part(Transform parent,PrimitiveType type,string name,Vector3 pos,Vector3 scale,Material material,Quaternion rotation)
     {
-        GameObject go;
-        if(type==PrimitiveType.Cone)
-        {
-            go=GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            scale=new Vector3(scale.x,scale.y,scale.z);
-        }
-        else go=GameObject.CreatePrimitive(type);
+        GameObject go=GameObject.CreatePrimitive(type);
         go.name=name;
         go.transform.SetParent(parent,false);
         go.transform.localPosition=pos;

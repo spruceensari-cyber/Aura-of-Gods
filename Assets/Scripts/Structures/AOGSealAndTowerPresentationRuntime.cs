@@ -89,6 +89,7 @@ public class AOGTowerDamageStageRuntime : MonoBehaviour
 
     private void ApplyStage()
     {
+        renderers = GetComponentsInChildren<Renderer>(true);
         float emission = stage == 0 ? 1f : stage == 1 ? 1.6f : stage == 2 ? 2.4f : stage == 3 ? 3.3f : 0.2f;
         Color teamColor = tower.towerTeam == MinionTeam.Blue ? new Color(0.18f,0.58f,1f) : new Color(1f,0.16f,0.22f);
         foreach (Renderer renderer in renderers)
@@ -105,7 +106,8 @@ public class AOGTowerDamageStageRuntime : MonoBehaviour
                     material.SetFloat("_Smoothness",Mathf.Max(0.12f,0.55f-stage*0.10f));
             }
         }
-        AOGAbilityVisuals.CreateRing("Tower_Damage_Stage_"+stage,transform.position+Vector3.up*0.06f,1.8f+stage*0.35f,teamColor,0.06f);
+        GameObject ring = AOGAbilityVisuals.CreateRing("Tower_Damage_Stage_"+stage,transform.position+Vector3.up*0.06f,1.8f+stage*0.35f,teamColor,0.06f);
+        Destroy(ring,0.8f);
     }
 }
 
@@ -126,7 +128,8 @@ public class AOGNexusFinalStatePresentationRuntime : MonoBehaviour
         {
             stage = newStage;
             Color c = nexus.team == MinionTeam.Blue ? new Color(0.22f,0.72f,1f) : new Color(1f,0.22f,0.30f);
-            AOGAbilityVisuals.CreateRing("Nexus_State_"+stage,transform.position+Vector3.up*0.05f,3.4f+stage*0.6f,c,0.10f);
+            GameObject ring = AOGAbilityVisuals.CreateRing("Nexus_State_"+stage,transform.position+Vector3.up*0.05f,3.4f+stage*0.6f,c,0.10f);
+            Destroy(ring,1.2f);
         }
         if (stage >= 1 && nexus.hp > 0f && Time.time >= nextPulse)
         {
@@ -151,13 +154,15 @@ public class AOGStructurePresentationBootstrap : MonoBehaviour
     private void Update()
     {
         if (Time.unscaledTime < nextScan) return;
-        nextScan = Time.unscaledTime + 0.8f;
+        nextScan = Time.unscaledTime + 1.25f;
 
-        foreach (AOGStrategicLaneSeal seal in FindObjectsByType<AOGStrategicLaneSeal>(FindObjectsInactive.Include,FindObjectsSortMode.None))
+        foreach (AOGStrategicLaneSeal seal in AOGWorldRegistry.Seals)
             if (seal != null && seal.GetComponent<AOGSealWorldBar>() == null) seal.gameObject.AddComponent<AOGSealWorldBar>();
-        foreach (TowerHealth tower in FindObjectsByType<TowerHealth>(FindObjectsInactive.Include,FindObjectsSortMode.None))
+
+        foreach (TowerHealth tower in AOGWorldRegistry.Towers)
             if (tower != null && tower.GetComponent<AOGTowerDamageStageRuntime>() == null) tower.gameObject.AddComponent<AOGTowerDamageStageRuntime>();
-        foreach (AOGNexusCore nexus in FindObjectsByType<AOGNexusCore>(FindObjectsInactive.Include,FindObjectsSortMode.None))
+
+        foreach (AOGNexusCore nexus in AOGWorldRegistry.Nexuses)
             if (nexus != null && nexus.GetComponent<AOGNexusFinalStatePresentationRuntime>() == null) nexus.gameObject.AddComponent<AOGNexusFinalStatePresentationRuntime>();
     }
 }

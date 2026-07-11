@@ -101,39 +101,9 @@ public class AOGBenchmarkPcLayoutRuntime : MonoBehaviour
 
     private static void ApplyRoster(Transform root)
     {
-        RectTransform canvas = FindRect(root,"TeamRosterCanvas");
-        if (canvas == null) return;
-
-        int blueIndex = 0;
-        int redIndex = 0;
-        foreach (RectTransform rect in canvas.GetComponentsInChildren<RectTransform>(true))
-        {
-            if (rect == canvas) continue;
-            bool blue = rect.name.StartsWith("Blue_Roster_");
-            bool red = rect.name.StartsWith("Red_Roster_");
-            if (!blue && !red) continue;
-
-            int index = blue ? blueIndex++ : redIndex++;
-            rect.anchorMin = rect.anchorMax = blue ? new Vector2(0f,1f) : new Vector2(1f,1f);
-            rect.pivot = blue ? new Vector2(0f,1f) : new Vector2(1f,1f);
-            rect.anchoredPosition = new Vector2(blue ? 10f : -10f,-86f-index*46f);
-            rect.sizeDelta = new Vector2(250f,40f);
-
-            Image panel = rect.GetComponent<Image>();
-            if (panel != null)
-                panel.color = blue ? new Color(0.012f,0.055f,0.10f,0.88f) : new Color(0.10f,0.018f,0.026f,0.88f);
-
-            Text label = rect.GetComponentInChildren<Text>(true);
-            if (label != null)
-            {
-                label.fontSize = 15;
-                label.alignment = blue ? TextAnchor.MiddleLeft : TextAnchor.MiddleRight;
-            }
-        }
-
-        RectTransform duplicateCenter = FindRect(root,"RealTeamKillScore");
-        if (duplicateCenter != null)
-            duplicateCenter.gameObject.SetActive(false);
+        // AOGTeamRosterHudRuntime owns this layout end-to-end. Keeping its geometry local
+        // prevents presentation passes from fighting over the side roster on scene reload.
+        return;
     }
 
     private static RectTransform FindRect(Transform root,string name)

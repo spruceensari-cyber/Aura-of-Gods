@@ -18,24 +18,35 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
     [SerializeField] private AOGActiveChampion currentChampion;
     [SerializeField] private AOGRole currentRole = AOGRole.Mid;
 
+    public AOGActiveChampion Current => currentChampion;
     public AOGRole CurrentRole => currentRole;
+    public AOGCharacterStats CurrentCharacterStats => currentChampion != null ? currentChampion.GetComponent<AOGCharacterStats>() : null;
+    public bool HasValidPlayer => currentChampion != null && currentChampion.IsActiveChampion && currentChampion.gameObject.activeInHierarchy && CurrentCharacterStats != null;
+
+    public event System.Action<AOGActiveChampion> PlayerChampionChanged;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Install()
     {
+        EnsureInstance();
+    }
+
+    public static AOGPlayerChampionAuthority EnsureInstance()
+    {
         if (Instance != null)
-            return;
+            return Instance;
 
         AOGPlayerChampionAuthority existing = FindFirstObjectByType<AOGPlayerChampionAuthority>(FindObjectsInactive.Include);
         if (existing != null)
         {
             Instance = existing;
-            return;
+            return existing;
         }
 
         GameObject host = new GameObject("AOG_Player_Champion_Authority");
         Instance = host.AddComponent<AOGPlayerChampionAuthority>();
         DontDestroyOnLoad(host);
+        return Instance;
     }
 
     private void Awake()
@@ -65,7 +76,7 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
 
             bool isSelected = candidate == selected;
             candidate.gameObject.SetActive(true);
-            candidate.SetActiveChampion(isSelected);
+            candidate.SetPlayerControlledState(isSelected);
 
             AOGUnifiedMobaInputDriver input = candidate.GetComponent<AOGUnifiedMobaInputDriver>();
             if (isSelected && input == null)
@@ -90,7 +101,7 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
         }
 
         MoveToBlueRoleSpawn(selected.transform, role);
-        selected.SetActiveChampion(true);
+        selected.SetPlayerControlledState(true);
         currentChampion = selected;
 
         EnsureSinglePlayerCombatDriver(selected);
@@ -108,12 +119,38 @@ public class AOGPlayerChampionAuthority : MonoBehaviour
         AOGPlayerEconomy economy = selected.GetComponent<AOGPlayerEconomy>();
         if (economy != null)
             AOGShopRuntime.Instance?.Bind(economy);
+
+        PlayerChampionChanged?.Invoke(selected);
+    }
+
+    public void RegisterPlayerChampion(AOGActiveChampion selected)
+    {
+        AOGRole role = AOGGameSession.Instance != null ? AOGGameSession.Instance.PlayerRole : currentRole;
+        RegisterPlayerChampion(selected, role);
+    }
+
+    public void ClearForSceneChange()
+    {
+        if (currentChampion == null)
+            return;
+
+        AOGActiveChampion previous = currentChampion;
+        currentChampion = null;
+        previous.SetPlayerControlledState(false);
+        PlayerChampionChanged?.Invoke(null);
     }
 
     private void LateUpdate()
     {
-        if (currentChampion == null || !currentChampion.gameObject.activeInHierarchy)
+        if (currentChampion == null)
             return;
+
+        if (!currentChampion.gameObject.activeInHierarchy || !currentChampion.IsActiveChampion)
+        {
+            currentChampion = null;
+            PlayerChampionChanged?.Invoke(null);
+            return;
+        }
 
         EnsureSinglePlayerCombatDriver(currentChampion);
 

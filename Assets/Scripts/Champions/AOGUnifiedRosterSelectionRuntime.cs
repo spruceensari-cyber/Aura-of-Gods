@@ -74,6 +74,15 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
             yield break;
         building = true;
 
+        AOGGameSession session = AOGGameSession.EnsureInstance();
+        if (session.SelectionCommitted && AOGPlayerChampionAuthority.Instance != null && AOGPlayerChampionAuthority.Instance.HasValidPlayer)
+        {
+            building = false;
+            yield break;
+        }
+
+        session.BeginChampionSelection();
+
         yield return new WaitForSecondsRealtime(0.45f);
         DisableConflictingSelectionRuntimes();
         DestroyLegacySelectionCanvases();
@@ -334,10 +343,21 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
     {
         if (selected || champion == null)
             return;
-        selected = true;
 
-        AOGRole role = RoleFor(champion.championId);
-        AOGPlayerChampionAuthority.Instance?.RegisterPlayerChampion(champion, role);
+        AOGChampionDefinition definition = AOGRosterDatabase.EnsureInstance().GetDefinition(champion.championId);
+        if (definition == null)
+        {
+            Debug.LogError("AOG unified roster: selected champion has no roster definition: " + champion.championId);
+            return;
+        }
+
+        AOGGameSession session = AOGGameSession.EnsureInstance();
+        if (!session.TryCommitSelection(definition))
+            return;
+
+        selected = true;
+        AOGRole role = definition.primaryRole;
+        AOGPlayerChampionAuthority.EnsureInstance().RegisterPlayerChampion(champion, role);
         AOGRoleBasedTeamRuntime.EnsureAndBuildTeams(champion, role);
         AOGMatchDirector.Instance?.BeginMatch();
         StartCoroutine(FadeOut());
@@ -353,6 +373,10 @@ public class AOGUnifiedRosterSelectionRuntime : MonoBehaviour
 
     private static AOGRole RoleFor(string id)
     {
+        AOGChampionDefinition definition = AOGRosterDatabase.EnsureInstance().GetDefinition(id);
+        if (definition != null)
+            return definition.primaryRole;
+
         if (id == "kaelith" || id == "auron") return AOGRole.Top;
         if (id == "dravenor" || id == "nocthyr") return AOGRole.Jungle;
         if (id == "vesper") return AOGRole.ADC;

@@ -12,12 +12,7 @@ public class AOGReferencePCPresentationRuntime : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
     {
-        if (FindFirstObjectByType<AOGReferencePCPresentationRuntime>() != null)
-            return;
-
-        GameObject host = new GameObject("AOG_Reference_PC_Presentation_Runtime");
-        DontDestroyOnLoad(host);
-        host.AddComponent<AOGReferencePCPresentationRuntime>();
+        // Superseded by AOGBenchmarkPcLayoutRuntime, which is the single layout pass.
     }
 
     private void Update()

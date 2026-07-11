@@ -5,16 +5,41 @@ using UnityEngine.UI;
 [DefaultExecutionOrder(1900)]
 public class AOGTeamRosterHudRuntime : MonoBehaviour
 {
+    private sealed class RosterSlot
+    {
+        public AOGTeamMemberIdentity member;
+        public Image background;
+        public Image portrait;
+        public Image healthFill;
+        public Text glyph;
+        public Text name;
+        public Text role;
+        public Text level;
+        public Text state;
+    }
+
     private static AOGTeamRosterHudRuntime instance;
-    private readonly Dictionary<AOGTeamMemberIdentity, Text> labels = new Dictionary<AOGTeamMemberIdentity, Text>();
+    private readonly List<RosterSlot> blueSlots = new List<RosterSlot>();
+    private readonly List<RosterSlot> redSlots = new List<RosterSlot>();
+
     private Canvas canvas;
     private Font font;
-    private Text centerScore;
+    private RectTransform blueRoot;
+    private RectTransform redRoot;
+    private Text primaryBlueScore;
+    private Text primaryRedScore;
+    private Text primaryTimer;
+    private int rosterSignature = int.MinValue;
+    private float nextPrimaryResolve;
 
     public static void Ensure()
     {
         if (instance != null)
+        {
+            instance.rosterSignature = int.MinValue;
             return;
+        }
+
         GameObject host = new GameObject("AOG_Team_Roster_Hud");
         instance = host.AddComponent<AOGTeamRosterHudRuntime>();
         DontDestroyOnLoad(host);
@@ -27,124 +52,316 @@ public class AOGTeamRosterHudRuntime : MonoBehaviour
             Destroy(gameObject);
             return;
         }
+
         instance = this;
         DontDestroyOnLoad(gameObject);
         font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        Build();
+        BuildCanvas();
     }
 
     private void Update()
     {
-        int blueKills = 0;
-        int redKills = 0;
-
-        foreach (KeyValuePair<AOGTeamMemberIdentity,Text> pair in labels)
+        int signature = GetRosterSignature();
+        if (signature != rosterSignature)
         {
-            if (pair.Key == null || pair.Value == null)
-                continue;
-
-            AOGCharacterStats stats = pair.Key.GetComponent<AOGCharacterStats>();
-            AOGChampionMatchStats matchStats = pair.Key.GetComponent<AOGChampionMatchStats>();
-            bool dead = stats != null && stats.IsDead;
-            int kills = matchStats != null ? matchStats.kills : 0;
-            int deaths = matchStats != null ? matchStats.deaths : 0;
-            int assists = matchStats != null ? matchStats.assists : 0;
-
-            if (pair.Key.team == MinionTeam.Blue) blueKills += kills;
-            else redKills += kills;
-
-            string respawn = dead && stats != null ? "  " + Mathf.CeilToInt(stats.RespawnRemaining) + "s" : string.Empty;
-            pair.Value.color = dead ? new Color(0.35f,0.35f,0.38f) : TeamColor(pair.Key.team);
-            pair.Value.text = RoleAbbreviation(pair.Key.role) + "  " + pair.Key.displayName +
-                              "   " + kills + "/" + deaths + "/" + assists +
-                              (dead ? "  ✕" + respawn : string.Empty);
+            rosterSignature = signature;
+            RebuildSlots();
         }
 
-        if (centerScore != null)
-            centerScore.text = blueKills + "   ◈   " + redKills;
+        if (Time.unscaledTime >= nextPrimaryResolve)
+        {
+            nextPrimaryResolve = Time.unscaledTime + 0.5f;
+            ResolvePrimaryHeader();
+        }
+
+        RefreshSlots(blueSlots, MinionTeam.Blue);
+        RefreshSlots(redSlots, MinionTeam.Red);
     }
 
-    private void Build()
+    private void BuildCanvas()
     {
         GameObject canvasObject = new GameObject("TeamRosterCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
-        canvasObject.transform.SetParent(transform,false);
+        canvasObject.transform.SetParent(transform, false);
         canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 2750;
 
         CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f,1080f);
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.matchWidthOrHeight = 0.5f;
 
-        BuildSide(AOGRoleBasedTeamRuntime.BlueRoster,true);
-        BuildSide(AOGRoleBasedTeamRuntime.RedRoster,false);
-        BuildCenterScore();
+        blueRoot = CreateRoot("BlueRosterRail", new Vector2(0f, 1f), new Vector2(16f, -86f), new Vector2(252f, 324f));
+        redRoot = CreateRoot("RedRosterRail", new Vector2(1f, 1f), new Vector2(-16f, -86f), new Vector2(252f, 324f));
     }
 
-    private void BuildSide(List<AOGTeamMemberIdentity> roster, bool blue)
+    private RectTransform CreateRoot(string name, Vector2 anchor, Vector2 position, Vector2 size)
     {
-        for (int i=0;i<roster.Count;i++)
+        GameObject root = new GameObject(name, typeof(RectTransform));
+        root.transform.SetParent(canvas.transform, false);
+        RectTransform rect = root.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = anchor;
+        rect.pivot = anchor;
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+        return rect;
+    }
+
+    private int GetRosterSignature()
+    {
+        unchecked
         {
-            AOGTeamMemberIdentity member=roster[i];
-            if (member==null) continue;
-
-            GameObject panel=new GameObject((blue?"Blue":"Red")+"_Roster_"+member.role,typeof(RectTransform),typeof(Image));
-            panel.transform.SetParent(canvas.transform,false);
-            RectTransform rect=panel.GetComponent<RectTransform>();
-            rect.anchorMin=rect.anchorMax=blue?new Vector2(0f,1f):new Vector2(1f,1f);
-            rect.pivot=blue?new Vector2(0f,1f):new Vector2(1f,1f);
-            rect.anchoredPosition=new Vector2(blue?18f:-18f,-18f-i*32f);
-            rect.sizeDelta=new Vector2(315f,28f);
-            panel.GetComponent<Image>().color=new Color(0.005f,0.012f,0.022f,0.84f);
-
-            GameObject textObject=new GameObject("Text",typeof(RectTransform),typeof(Text));
-            textObject.transform.SetParent(panel.transform,false);
-            RectTransform tr=textObject.GetComponent<RectTransform>();
-            tr.anchorMin=Vector2.zero; tr.anchorMax=Vector2.one; tr.offsetMin=new Vector2(8f,0f); tr.offsetMax=new Vector2(-8f,0f);
-            Text text=textObject.GetComponent<Text>();
-            text.font=font;
-            text.fontSize=14;
-            text.fontStyle=FontStyle.Bold;
-            text.alignment=blue?TextAnchor.MiddleLeft:TextAnchor.MiddleRight;
-            text.color=TeamColor(member.team);
-            text.raycastTarget=false;
-            labels[member]=text;
+            int signature = AOGRoleBasedTeamRuntime.BlueRoster.Count * 397 ^ AOGRoleBasedTeamRuntime.RedRoster.Count;
+            foreach (AOGTeamMemberIdentity member in AOGRoleBasedTeamRuntime.BlueRoster)
+                signature = signature * 31 + (member != null ? member.GetInstanceID() : 0);
+            foreach (AOGTeamMemberIdentity member in AOGRoleBasedTeamRuntime.RedRoster)
+                signature = signature * 31 + (member != null ? member.GetInstanceID() : 0);
+            return signature;
         }
     }
 
-    private void BuildCenterScore()
+    private void RebuildSlots()
     {
-        GameObject scoreObject=new GameObject("RealTeamKillScore",typeof(RectTransform),typeof(Text));
-        scoreObject.transform.SetParent(canvas.transform,false);
-        RectTransform rect=scoreObject.GetComponent<RectTransform>();
-        rect.anchorMin=rect.anchorMax=new Vector2(0.5f,1f);
-        rect.pivot=new Vector2(0.5f,1f);
-        rect.anchoredPosition=new Vector2(0f,-16f);
-        rect.sizeDelta=new Vector2(260f,42f);
-        centerScore=scoreObject.GetComponent<Text>();
-        centerScore.font=font;
-        centerScore.fontSize=25;
-        centerScore.fontStyle=FontStyle.Bold;
-        centerScore.alignment=TextAnchor.MiddleCenter;
-        centerScore.color=new Color(0.92f,0.80f,0.48f);
-        centerScore.raycastTarget=false;
+        ClearSlots(blueRoot, blueSlots);
+        ClearSlots(redRoot, redSlots);
+
+        BuildSide(AOGRoleBasedTeamRuntime.BlueRoster, blueRoot, true, blueSlots);
+        BuildSide(AOGRoleBasedTeamRuntime.RedRoster, redRoot, false, redSlots);
     }
 
-    private static string RoleAbbreviation(AOGRole role)
+    private void ClearSlots(RectTransform root, List<RosterSlot> slots)
     {
-        return role switch
+        slots.Clear();
+        if (root == null)
+            return;
+
+        for (int i = root.childCount - 1; i >= 0; i--)
+            Destroy(root.GetChild(i).gameObject);
+    }
+
+    private void BuildSide(List<AOGTeamMemberIdentity> roster, RectTransform root, bool blue, List<RosterSlot> output)
+    {
+        for (int index = 0; index < roster.Count && index < 5; index++)
         {
-            AOGRole.Top=>"TOP",
-            AOGRole.Jungle=>"JGL",
-            AOGRole.Mid=>"MID",
-            AOGRole.ADC=>"ADC",
-            _=>"SUP"
-        };
+            AOGTeamMemberIdentity member = roster[index];
+            if (member == null)
+                continue;
+
+            Color teamColor = blue ? new Color(0.20f, 0.66f, 1f) : new Color(1f, 0.26f, 0.30f);
+            Color background = blue ? new Color(0.008f, 0.035f, 0.065f, 0.90f) : new Color(0.070f, 0.010f, 0.020f, 0.90f);
+            Vector2 anchor = blue ? new Vector2(0f, 1f) : new Vector2(1f, 1f);
+
+            RectTransform row = Panel((blue ? "Blue" : "Red") + "_Roster_" + member.role, root, anchor, anchor,
+                new Vector2(0f, -index * 62f), new Vector2(252f, 56f), background, false);
+            row.pivot = anchor;
+            Outline outline = row.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(teamColor.r, teamColor.g, teamColor.b, 0.60f);
+            outline.effectDistance = new Vector2(1f, -1f);
+
+            RectTransform portrait = Panel("Portrait", row, blue ? new Vector2(0f, 0.5f) : new Vector2(1f, 0.5f),
+                blue ? new Vector2(0f, 0.5f) : new Vector2(1f, 0.5f), blue ? new Vector2(7f, 0f) : new Vector2(-7f, 0f),
+                new Vector2(46f, 46f), new Color(teamColor.r * 0.22f, teamColor.g * 0.22f, teamColor.b * 0.22f, 1f), false);
+            portrait.pivot = blue ? new Vector2(0f, 0.5f) : new Vector2(1f, 0.5f);
+            Image portraitImage = portrait.GetComponent<Image>();
+            Outline portraitOutline = portrait.gameObject.AddComponent<Outline>();
+            portraitOutline.effectColor = teamColor;
+            portraitOutline.effectDistance = new Vector2(1.5f, -1.5f);
+
+            Text glyph = Label("Glyph", portrait, "?", 24, TextAnchor.MiddleCenter, Vector2.zero, new Vector2(42f, 42f), teamColor);
+            RectTransform levelBadge = Panel("LevelBadge", portrait, blue ? new Vector2(1f, 0f) : new Vector2(0f, 0f),
+                blue ? new Vector2(1f, 0f) : new Vector2(0f, 0f), blue ? new Vector2(-1f, 1f) : new Vector2(1f, 1f),
+                new Vector2(18f, 18f), new Color(0.008f, 0.014f, 0.026f, 1f), false);
+            levelBadge.pivot = blue ? new Vector2(1f, 0f) : new Vector2(0f, 0f);
+            Text level = Label("Level", levelBadge, "1", 11, TextAnchor.MiddleCenter, Vector2.zero, new Vector2(17f, 17f), Color.white);
+
+            Vector2 textAnchor = blue ? new Vector2(0f, 0.5f) : new Vector2(1f, 0.5f);
+            float textX = blue ? 61f : -61f;
+            TextAnchor alignment = blue ? TextAnchor.MiddleLeft : TextAnchor.MiddleRight;
+            Text name = Label("Name", row, "WAITING", 14, alignment, new Vector2(textX, 12f), new Vector2(164f, 22f), Color.white, textAnchor);
+            Text role = Label("Role", row, "---", 10, alignment, new Vector2(textX, -7f), new Vector2(164f, 18f), teamColor, textAnchor);
+            Text state = Label("State", row, "0 / 0 / 0", 10, alignment, new Vector2(textX, -22f), new Vector2(164f, 17f), new Color(0.72f, 0.80f, 0.88f), textAnchor);
+
+            RectTransform hpBackground = Panel("HealthBackground", row, blue ? new Vector2(0f, 0f) : new Vector2(1f, 0f),
+                blue ? new Vector2(0f, 0f) : new Vector2(1f, 0f), blue ? new Vector2(61f, 4f) : new Vector2(-61f, 4f),
+                new Vector2(164f, 5f), new Color(0.015f, 0.020f, 0.030f, 1f), false);
+            hpBackground.pivot = blue ? new Vector2(0f, 0f) : new Vector2(1f, 0f);
+            Image healthFill = Fill("HealthFill", hpBackground, teamColor);
+
+            output.Add(new RosterSlot
+            {
+                member = member,
+                background = row.GetComponent<Image>(),
+                portrait = portraitImage,
+                healthFill = healthFill,
+                glyph = glyph,
+                name = name,
+                role = role,
+                level = level,
+                state = state
+            });
+        }
     }
 
-    private static Color TeamColor(MinionTeam team)
+    private void RefreshSlots(List<RosterSlot> slots, MinionTeam team)
     {
-        return team==MinionTeam.Blue?new Color(0.28f,0.70f,1f):new Color(1f,0.30f,0.32f);
+        int teamKills = 0;
+        foreach (RosterSlot slot in slots)
+        {
+            if (slot == null || slot.member == null)
+                continue;
+
+            AOGCharacterStats stats = slot.member.GetComponent<AOGCharacterStats>();
+            AOGChampionProgression progression = slot.member.GetComponent<AOGChampionProgression>();
+            AOGChampionMatchStats match = slot.member.GetComponent<AOGChampionMatchStats>();
+            AOGActiveChampion champion = slot.member.GetComponent<AOGActiveChampion>();
+
+            int kills = match != null ? match.kills : 0;
+            int deaths = match != null ? match.deaths : 0;
+            int assists = match != null ? match.assists : 0;
+            teamKills += kills;
+
+            bool dead = stats != null && stats.IsDead;
+            Color teamColor = team == MinionTeam.Blue ? new Color(0.20f, 0.66f, 1f) : new Color(1f, 0.26f, 0.30f);
+            Color accent = champion != null ? champion.accentColor : teamColor;
+            string display = !string.IsNullOrEmpty(slot.member.displayName) ? slot.member.displayName : slot.member.championId.ToUpperInvariant();
+
+            slot.name.text = display;
+            slot.role.text = RoleLabel(slot.member.role) + (slot.member.isHumanPlayer ? "  PLAYER" : string.Empty);
+            slot.level.text = (progression != null ? progression.level : 1).ToString();
+            slot.glyph.text = display.Length > 0 ? display.Substring(0, 1) : "?";
+            slot.glyph.color = dead ? new Color(0.35f, 0.35f, 0.38f) : accent;
+            slot.portrait.color = dead
+                ? new Color(0.06f, 0.06f, 0.07f, 1f)
+                : new Color(accent.r * 0.24f, accent.g * 0.24f, accent.b * 0.24f, 1f);
+            slot.healthFill.fillAmount = stats != null ? Mathf.Clamp01(stats.hp / Mathf.Max(1f, stats.maxHp)) : 1f;
+            slot.healthFill.color = dead ? new Color(0.20f, 0.20f, 0.22f) : teamColor;
+            slot.background.color = dead
+                ? new Color(0.018f, 0.020f, 0.026f, 0.92f)
+                : team == MinionTeam.Blue ? new Color(0.008f, 0.035f, 0.065f, 0.90f) : new Color(0.070f, 0.010f, 0.020f, 0.90f);
+            slot.name.color = dead ? new Color(0.48f, 0.50f, 0.54f) : Color.white;
+
+            if (dead)
+            {
+                int remaining = stats != null ? Mathf.CeilToInt(stats.RespawnRemaining) : 0;
+                slot.state.text = "DOWN " + remaining + "s";
+            }
+            else
+            {
+                slot.state.text = kills + " / " + deaths + " / " + assists;
+            }
+        }
+
+        UpdatePrimaryHeader(team, teamKills);
+    }
+
+    private void ResolvePrimaryHeader()
+    {
+        AOGCompetitiveMobaHUDRuntime hud = FindFirstObjectByType<AOGCompetitiveMobaHUDRuntime>();
+        if (hud == null)
+            return;
+
+        primaryBlueScore = FindText(hud.transform, "BlueScore");
+        primaryRedScore = FindText(hud.transform, "RedScore");
+        primaryTimer = FindText(hud.transform, "Timer");
+    }
+
+    private void UpdatePrimaryHeader(MinionTeam team, int kills)
+    {
+        if (team == MinionTeam.Blue && primaryBlueScore != null)
+            primaryBlueScore.text = "CELESTIAL  " + kills;
+        if (team == MinionTeam.Red && primaryRedScore != null)
+            primaryRedScore.text = kills + "  DOMINION";
+
+        if (primaryTimer != null && AOGMatchDirector.Instance != null)
+        {
+            int total = Mathf.Max(0, Mathf.FloorToInt(AOGMatchDirector.Instance.MatchTime));
+            primaryTimer.text = (total / 60).ToString("00") + ":" + (total % 60).ToString("00");
+        }
+    }
+
+    private static string RoleLabel(AOGRole role)
+    {
+        switch (role)
+        {
+            case AOGRole.Top: return "TOP";
+            case AOGRole.Jungle: return "JGL";
+            case AOGRole.Mid: return "MID";
+            case AOGRole.ADC: return "ADC";
+            default: return "SUP";
+        }
+    }
+
+    private RectTransform Panel(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, Color color, bool stretch)
+    {
+        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(parent, false);
+        RectTransform rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.pivot = anchorMin == anchorMax ? anchorMin : new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        if (stretch)
+        {
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+        else
+        {
+            rect.sizeDelta = size;
+        }
+
+        Image image = go.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+        return rect;
+    }
+
+    private Image Fill(string name, RectTransform parent, Color color)
+    {
+        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(parent, false);
+        RectTransform rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = new Vector2(1f, 1f);
+        rect.offsetMax = new Vector2(-1f, -1f);
+        Image image = go.GetComponent<Image>();
+        image.type = Image.Type.Filled;
+        image.fillMethod = Image.FillMethod.Horizontal;
+        image.fillOrigin = (int)Image.OriginHorizontal.Left;
+        image.fillAmount = 1f;
+        image.color = color;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    private Text Label(string name, Transform parent, string value, int size, TextAnchor alignment, Vector2 position, Vector2 dimensions, Color color, Vector2? anchor = null)
+    {
+        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Text));
+        go.transform.SetParent(parent, false);
+        RectTransform rect = go.GetComponent<RectTransform>();
+        Vector2 a = anchor ?? new Vector2(0.5f, 0.5f);
+        rect.anchorMin = rect.anchorMax = a;
+        rect.pivot = a;
+        rect.anchoredPosition = position;
+        rect.sizeDelta = dimensions;
+
+        Text text = go.GetComponent<Text>();
+        text.font = font;
+        text.fontSize = size;
+        text.fontStyle = FontStyle.Bold;
+        text.alignment = alignment;
+        text.color = color;
+        text.text = value;
+        text.raycastTarget = false;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        return text;
+    }
+
+    private static Text FindText(Transform root, string name)
+    {
+        foreach (Text text in root.GetComponentsInChildren<Text>(true))
+            if (text.name == name) return text;
+        return null;
     }
 }

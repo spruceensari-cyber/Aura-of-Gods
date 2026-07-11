@@ -19,9 +19,26 @@ public class AOGActiveChampion : MonoBehaviour
 
     public void SetActiveChampion(bool active)
     {
+        if (active)
+        {
+            AOGPlayerChampionAuthority authority = AOGPlayerChampionAuthority.EnsureInstance();
+            if (authority.Current != this)
+            {
+                authority.RegisterPlayerChampion(this);
+                return;
+            }
+        }
+
+        SetPlayerControlledState(active);
+    }
+
+    internal void SetPlayerControlledState(bool active)
+    {
         IsActiveChampion = active;
         if (active)
             Current = this;
+        else if (Current == this)
+            Current = null;
 
         AOGUnifiedMobaInputDriver input = GetComponent<AOGUnifiedMobaInputDriver>();
         if (active)
@@ -45,17 +62,12 @@ public class AOGActiveChampion : MonoBehaviour
         foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
             if (renderer != null) renderer.enabled = active;
 
-        if (!active)
-            return;
+    }
 
-        Camera camera = Camera.main;
-        if (camera != null)
-            camera.GetComponent<AOGMobaCameraController>()?.SetTarget(transform, true);
-
-        AOGPlayerEconomy economy = GetComponent<AOGPlayerEconomy>();
-        if (economy == null)
-            economy = gameObject.AddComponent<AOGPlayerEconomy>();
-        AOGShopRuntime.Instance?.Bind(economy);
+    private void OnDisable()
+    {
+        if (Current == this)
+            Current = null;
     }
 }
 

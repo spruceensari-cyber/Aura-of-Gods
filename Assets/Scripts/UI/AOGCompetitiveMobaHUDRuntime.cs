@@ -46,13 +46,22 @@ public class AOGCompetitiveMobaHUDRuntime : MonoBehaviour
 
     private Canvas canvas;
     private Font font;
+    private AOGActiveChampion activeChampion;
     private AOGCharacterStats stats;
     private LyraSkillSet lyra;
+    private IAOGAbilityCooldownProvider abilityProvider;
+    private AOGPlayerEconomy economy;
+    private AOGChampionProgression progression;
 
     private Image hpFill;
     private Image resourceFill;
+    private Image portraitImage;
     private Text hpText;
     private Text resourceText;
+    private Text portraitGlyph;
+    private Text playerName;
+    private Text playerRole;
+    private Text playerLevel;
     private Text timerText;
     private Text goldText;
     private Text attackText;
@@ -80,7 +89,7 @@ public class AOGCompetitiveMobaHUDRuntime : MonoBehaviour
 
     private void Update()
     {
-        if (stats == null || !stats.gameObject.activeInHierarchy)
+        if (activeChampion != AOGPlayerChampionAuthority.CurrentChampion || stats == null || !stats.gameObject.activeInHierarchy)
         {
             if (Time.unscaledTime >= nextSearchTime)
             {
@@ -100,16 +109,32 @@ public class AOGCompetitiveMobaHUDRuntime : MonoBehaviour
 
     private void FindPlayer()
     {
-        AOGPlayerMOBAController[] players = FindObjectsByType<AOGPlayerMOBAController>(FindObjectsSortMode.None);
-        foreach (AOGPlayerMOBAController player in players)
+        activeChampion = AOGPlayerChampionAuthority.CurrentChampion;
+        if (activeChampion == null || !activeChampion.gameObject.activeInHierarchy)
         {
-            if (player == null || !player.gameObject.name.ToLowerInvariant().Contains("lyra"))
-                continue;
-
-            stats = player.GetComponent<AOGCharacterStats>();
-            lyra = player.GetComponent<LyraSkillSet>();
+            stats = null;
+            lyra = null;
+            abilityProvider = null;
+            economy = null;
+            progression = null;
             return;
         }
+
+        stats = activeChampion.GetComponent<AOGCharacterStats>();
+        lyra = activeChampion.GetComponent<LyraSkillSet>();
+        economy = activeChampion.GetComponent<AOGPlayerEconomy>();
+        progression = activeChampion.GetComponent<AOGChampionProgression>();
+        abilityProvider = null;
+        foreach (MonoBehaviour behaviour in activeChampion.GetComponents<MonoBehaviour>())
+        {
+            if (behaviour is IAOGAbilityCooldownProvider provider)
+            {
+                abilityProvider = provider;
+                break;
+            }
+        }
+
+        ApplyPlayerIdentity();
     }
 
     private void BuildHud()
@@ -367,6 +392,32 @@ public class AOGCompetitiveMobaHUDRuntime : MonoBehaviour
         attackText.text = "⚔ " + Mathf.RoundToInt(stats.attackDamage);
         armorText.text = "◆ 30";
         speedText.text = "➤ " + stats.moveSpeed.ToString("0.0");
+    }
+
+    private void ApplyPlayerIdentity()
+    {
+        if (activeChampion == null)
+            return;
+
+        Color accent = activeChampion.accentColor;
+        if (playerName != null)
+            playerName.text = activeChampion.displayName;
+        if (playerRole != null)
+        {
+            playerRole.text = activeChampion.roleName;
+            playerRole.color = accent;
+        }
+        if (portraitGlyph != null)
+        {
+            portraitGlyph.text = string.IsNullOrEmpty(activeChampion.displayName)
+                ? "?"
+                : activeChampion.displayName.Substring(0, 1);
+            portraitGlyph.color = Color.Lerp(accent, Color.white, 0.22f);
+        }
+        if (portraitImage != null)
+            portraitImage.color = Color.Lerp(Color.white, accent, 0.30f);
+        if (playerLevel != null && progression != null)
+            playerLevel.text = progression.level.ToString();
     }
 
     private RectTransform Panel(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, Color color)

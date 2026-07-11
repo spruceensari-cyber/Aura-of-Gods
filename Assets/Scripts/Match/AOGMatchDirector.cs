@@ -7,6 +7,7 @@ public enum AOGMatchState
 {
     Loading,
     ChampionSelect,
+    MatchStarting,
     Playing,
     BlueVictory,
     RedVictory
@@ -24,6 +25,8 @@ public class AOGMatchDirector : MonoBehaviour
 
     private float matchStartTime;
     private Canvas resultCanvas;
+    private int activeSceneHandle = int.MinValue;
+    private bool matchStartInProgress;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Install()
@@ -37,7 +40,10 @@ public class AOGMatchDirector : MonoBehaviour
     {
         EnsureInstance();
         if (Instance != null)
+        {
+            Instance.PrepareForScene(scene);
             Instance.StartCoroutine(Instance.SetupSceneAfterStartup());
+        }
     }
 
     private static void EnsureInstance()
@@ -71,7 +77,25 @@ public class AOGMatchDirector : MonoBehaviour
 
     private void Start()
     {
+        PrepareForScene(SceneManager.GetActiveScene());
         StartCoroutine(SetupSceneAfterStartup());
+    }
+
+    private void PrepareForScene(Scene scene)
+    {
+        if (!scene.IsValid() || activeSceneHandle == scene.handle)
+            return;
+
+        activeSceneHandle = scene.handle;
+        matchStartTime = 0f;
+        matchStartInProgress = false;
+        BlueNexus = null;
+        RedNexus = null;
+
+        if (resultCanvas != null)
+            Destroy(resultCanvas.gameObject);
+
+        SetState(AOGMatchState.Loading);
     }
 
     private IEnumerator SetupSceneAfterStartup()
@@ -83,16 +107,46 @@ public class AOGMatchDirector : MonoBehaviour
         EnsureTowerBars();
 
         if (State == AOGMatchState.Loading)
+        {
             SetState(AOGMatchState.ChampionSelect);
+            AOGGameSession.EnsureInstance().BeginChampionSelection();
+        }
     }
 
     public void BeginMatch()
     {
-        if (State == AOGMatchState.Playing)
+        if (State == AOGMatchState.Playing || State == AOGMatchState.MatchStarting || matchStartInProgress)
             return;
 
-        matchStartTime = Time.unscaledTime;
-        SetState(AOGMatchState.Playing);
+        AOGGameSession session = AOGGameSession.EnsureInstance();
+        AOGPlayerChampionAuthority authority = AOGPlayerChampionAuthority.EnsureInstance();
+        if (!session.SelectionCommitted || !authority.HasValidPlayer)
+        {
+            Debug.LogError("AOG: Match start was blocked because no valid selected player champion is registered.");
+            return;
+        }
+
+        StartCoroutine(BeginMatchRoutine());
+    }
+
+    private IEnumerator BeginMatchRoutine()
+    {
+        matchStartInProgress = true;
+        SetState(AOGMatchState.MatchStarting);
+        yield return null;
+
+        AOGPlayerChampionAuthority authority = AOGPlayerChampionAuthority.EnsureInstance();
+        if (authority.HasValidPlayer)
+        {
+            matchStartTime = Time.unscaledTime;
+            SetState(AOGMatchState.Playing);
+        }
+        else
+        {
+            SetState(AOGMatchState.ChampionSelect);
+        }
+
+        matchStartInProgress = false;
     }
 
     public void RegisterNexus(AOGNexusCore nexus)
@@ -124,6 +178,7 @@ public class AOGMatchDirector : MonoBehaviour
     private void SetState(AOGMatchState newState)
     {
         State = newState;
+        AOGGameSession.Instance?.SetMatchState(newState);
     }
 
     private void EnsureNexusCores()

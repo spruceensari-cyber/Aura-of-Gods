@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class AOGTeamMemberIdentity : MonoBehaviour
 {
@@ -39,6 +40,21 @@ public class AOGRoleBasedTeamRuntime : MonoBehaviour
         }
         Instance = this;
         DontDestroyOnLoad(gameObject);
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private void OnDestroy()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        if (Instance == this)
+            Instance = null;
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        teamsBuilt = false;
+        BlueRoster.Clear();
+        RedRoster.Clear();
     }
 
     private void BuildTeams(AOGActiveChampion selected, AOGRole playerRole)

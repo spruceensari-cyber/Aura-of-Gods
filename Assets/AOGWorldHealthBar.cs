@@ -16,25 +16,20 @@ public class AOGWorldHealthBar : MonoBehaviour
     private Transform barRootTransform;
     private Transform fillTransform;
     private Transform damageGhostTransform;
-
     private Minion minionTarget;
     private TowerHealth towerTarget;
     private AOGCharacterStats heroTarget;
-
     private bool isHidden;
     private float displayedRatio = 1f;
     private float ghostRatio = 1f;
+    private float nextVisualUpdate;
+    private float visualInterval = 0.033f;
 
     private void Start()
     {
-        if (target == null)
-            target = transform;
-
-        if (barOffset == Vector3.zero)
-            barOffset = new Vector3(0f, heightOffset, 0f);
-
-        if (barWidth <= 0f)
-            barWidth = width;
+        if (target == null) target = transform;
+        if (barOffset == Vector3.zero) barOffset = new Vector3(0f, heightOffset, 0f);
+        if (barWidth <= 0f) barWidth = width;
 
         minionTarget = GetComponent<Minion>();
         towerTarget = GetComponent<TowerHealth>();
@@ -45,6 +40,15 @@ public class AOGWorldHealthBar : MonoBehaviour
             barWidth = Mathf.Max(barWidth, 2.45f);
             barHeight = Mathf.Max(barHeight, 0.20f);
             barOffset.y = Mathf.Max(barOffset.y, 3.1f);
+            visualInterval = 1f / 30f;
+        }
+        else if (towerTarget != null)
+        {
+            visualInterval = 0.05f;
+        }
+        else if (minionTarget != null)
+        {
+            visualInterval = 0.08f;
         }
 
         BuildHealthBar();
@@ -53,12 +57,14 @@ public class AOGWorldHealthBar : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (barRootTransform == null || fillTransform == null || isHidden)
-            return;
+        if (barRootTransform == null || fillTransform == null || isHidden) return;
+        if (Time.unscaledTime < nextVisualUpdate) return;
+        float dt = visualInterval;
+        nextVisualUpdate = Time.unscaledTime + visualInterval;
 
         float targetRatio = GetHealthRatio();
-        displayedRatio = Mathf.MoveTowards(displayedRatio, targetRatio, Time.deltaTime * 3.8f);
-        ghostRatio = Mathf.MoveTowards(ghostRatio, targetRatio, Time.deltaTime * 0.65f);
+        displayedRatio = Mathf.MoveTowards(displayedRatio, targetRatio, dt * 3.8f);
+        ghostRatio = Mathf.MoveTowards(ghostRatio, targetRatio, dt * 0.65f);
 
         ApplyRatio(fillTransform, displayedRatio, -0.018f);
         if (damageGhostTransform != null)
@@ -78,8 +84,7 @@ public class AOGWorldHealthBar : MonoBehaviour
 
     private void BuildHealthBar()
     {
-        if (barRootTransform != null)
-            return;
+        if (barRootTransform != null) return;
 
         GameObject rootObj = new GameObject("AOG_HP_Bar");
         rootObj.transform.SetParent(transform);
@@ -90,13 +95,10 @@ public class AOGWorldHealthBar : MonoBehaviour
 
         GameObject border = CreateBarCube("HP_BORDER", barRootTransform, new Vector3(barWidth + 0.16f, barHeight + 0.13f, 0.055f), new Color(0.02f, 0.025f, 0.035f, 1f), 0f);
         GameObject bg = CreateBarCube("HP_BG", border.transform, new Vector3(0.94f, 0.56f, 0.8f), new Color(0.055f, 0.07f, 0.075f, 1f), -0.006f);
-
         GameObject ghost = CreateBarCube("HP_DAMAGE_GHOST", bg.transform, new Vector3(1f, 0.78f, 0.75f), new Color(0.92f, 0.72f, 0.19f, 1f), -0.010f);
         damageGhostTransform = ghost.transform;
-
         GameObject fill = CreateBarCube("HP_FILL", bg.transform, new Vector3(1f, 0.78f, 0.68f), GetTeamColor(), -0.018f);
         fillTransform = fill.transform;
-
         CreateSegments(border.transform);
     }
 
@@ -118,9 +120,7 @@ public class AOGWorldHealthBar : MonoBehaviour
         }
 
         Collider col = obj.GetComponent<Collider>();
-        if (col != null)
-            Destroy(col);
-
+        if (col != null) Destroy(col);
         return obj;
     }
 
@@ -138,43 +138,30 @@ public class AOGWorldHealthBar : MonoBehaviour
     private static Material CreateUnlitMaterial(string name, Color color)
     {
         Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (shader == null)
-            shader = Shader.Find("Unlit/Color");
-
+        if (shader == null) shader = Shader.Find("Unlit/Color");
         Material material = new Material(shader) { name = name, color = color };
-        if (material.HasProperty("_BaseColor"))
-            material.SetColor("_BaseColor", color);
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
         return material;
     }
 
     public void Refresh()
     {
-        if (barRootTransform == null)
-            BuildHealthBar();
-
+        if (barRootTransform == null) BuildHealthBar();
         isHidden = false;
-        if (barRootTransform != null)
-            barRootTransform.gameObject.SetActive(true);
+        if (barRootTransform != null) barRootTransform.gameObject.SetActive(true);
     }
 
     public void Hide()
     {
         isHidden = true;
-        if (barRootTransform != null)
-            barRootTransform.gameObject.SetActive(false);
+        if (barRootTransform != null) barRootTransform.gameObject.SetActive(false);
     }
 
     private float GetHealthRatio()
     {
-        if (minionTarget != null)
-            return Mathf.Clamp01(minionTarget.hp / Mathf.Max(1f, minionTarget.maxHp));
-
-        if (towerTarget != null)
-            return Mathf.Clamp01(towerTarget.hp / Mathf.Max(1f, towerTarget.maxHp));
-
-        if (heroTarget != null)
-            return Mathf.Clamp01(heroTarget.hp / Mathf.Max(1f, heroTarget.maxHp));
-
+        if (minionTarget != null) return Mathf.Clamp01(minionTarget.hp / Mathf.Max(1f, minionTarget.maxHp));
+        if (towerTarget != null) return Mathf.Clamp01(towerTarget.hp / Mathf.Max(1f, towerTarget.maxHp));
+        if (heroTarget != null) return Mathf.Clamp01(heroTarget.hp / Mathf.Max(1f, heroTarget.maxHp));
         return 1f;
     }
 
@@ -182,13 +169,10 @@ public class AOGWorldHealthBar : MonoBehaviour
     {
         if (heroTarget != null)
             return heroTarget.team == MinionTeam.Blue ? new Color(0.17f, 0.88f, 0.38f, 1f) : new Color(0.96f, 0.20f, 0.22f, 1f);
-
         if (minionTarget != null)
             return minionTarget.team == MinionTeam.Blue ? new Color(0.16f, 0.62f, 1f, 1f) : new Color(0.96f, 0.22f, 0.25f, 1f);
-
         if (towerTarget != null)
             return towerTarget.towerTeam == MinionTeam.Blue ? new Color(0.16f, 0.62f, 1f, 1f) : new Color(0.96f, 0.22f, 0.25f, 1f);
-
         return new Color(0.72f, 0.32f, 1f, 1f);
     }
 }

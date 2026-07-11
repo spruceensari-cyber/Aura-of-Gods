@@ -78,9 +78,12 @@ public class AOGOriginalLaneTowerRuntime : MonoBehaviour
 
     private static void HideLegacyTowerVisuals(Transform tower)
     {
+        Transform originalRoot = tower.Find("AOG_Original_Lane_Tower_Visual");
+
         foreach (LineRenderer line in tower.GetComponentsInChildren<LineRenderer>(true))
         {
             if (line == null) continue;
+            if (originalRoot != null && line.transform.IsChildOf(originalRoot)) continue;
             string n = line.gameObject.name.ToLowerInvariant();
             if (n.Contains("hp") || n.Contains("health")) continue;
             line.enabled = false;
@@ -90,7 +93,8 @@ public class AOGOriginalLaneTowerRuntime : MonoBehaviour
         {
             if (renderer == null) continue;
             Transform t = renderer.transform;
-            if (t == tower || t.IsChildOf(tower.Find("AOG_Original_Lane_Tower_Visual"))) continue;
+            if (t == tower) continue;
+            if (originalRoot != null && t.IsChildOf(originalRoot)) continue;
 
             string n = renderer.gameObject.name.ToLowerInvariant();
             bool keep = n.Contains("hp_") || n.Contains("health") || n.Contains("objective") ||
